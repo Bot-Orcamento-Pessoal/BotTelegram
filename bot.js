@@ -230,3 +230,6 @@ bot.onText(/\/removergasto (\d+)/, (msg, match) => {
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
 });
+app.get('/', (req, res) => {
+  res.send('Bot está online!');
+});
