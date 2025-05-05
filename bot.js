@@ -18,12 +18,15 @@ app.post(`/bot${token}`, (req, res) => {
 
 let saldo = 0;
 let gastos = [];
+const activeChats = new Set();
 
 const meses = {
   janeiro: '01', fevereiro: '02', março: '03', abril: '04',
   maio: '05', junho: '06', julho: '07', agosto: '08',
   setembro: '09', outubro: '10', novembro: '11', dezembro: '12'
 };
+
+const formatarValor = valor => `R$ ${valor.toFixed(2)}`;
 
 const mostrarMenu = (chatId) => {
   bot.sendMessage(chatId, 'O que deseja fazer?', {
@@ -55,11 +58,11 @@ const enviarResumoDetalhado = (chatId) => {
 
   bot.sendMessage(chatId, `
 Resumo do mês:
-- Total gasto: R$ ${totalGasto.toFixed(2)}
-- Saldo atual: R$ ${saldo.toFixed(2)}
-- Em dinheiro/débito: R$ ${gastoDinheiro.toFixed(2)}
-- No cartão: R$ ${gastoCartao.toFixed(2)}
-- Com SODEXO: R$ ${gastoSodexo.toFixed(2)}
+- Total gasto: ${formatarValor(totalGasto)}
+- Saldo atual: ${formatarValor(saldo)}
+- Em dinheiro/débito: ${formatarValor(gastoDinheiro)}
+- No cartão: ${formatarValor(gastoCartao)}
+- Com SODEXO: ${formatarValor(gastoSodexo)}
   `.trim()).then(() => mostrarMenu(chatId));
 };
 
@@ -72,9 +75,13 @@ bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const tipo = query.data;
 
+  if (activeChats.has(chatId)) return;
+  activeChats.add(chatId);
+
   try {
     await bot.answerCallbackQuery(query.id);
   } catch (err) {
+    activeChats.delete(chatId);
     return;
   }
 
@@ -91,14 +98,15 @@ bot.on('callback_query', async (query) => {
       if (msg.chat.id !== chatId) return;
 
       const linhas = msg.text.split('\n');
+      const tipoGasto = tipo.replace('gasto_', '');
+      const data = new Date().toISOString().slice(0, 10);
+
       linhas.forEach(linha => {
         const partes = linha.split(',');
         if (partes.length !== 2) return;
         const [descricao, valorTexto] = partes;
         const valor = parseFloat(valorTexto);
         if (descricao && !isNaN(valor)) {
-          const tipoGasto = tipo.replace('gasto_', '');
-          const data = new Date().toISOString().slice(0, 10);
           gastos.push({ descricao: descricao.trim(), valor, tipo: tipoGasto, data });
           if (tipoGasto === 'dinheiro') saldo -= valor;
         }
@@ -106,9 +114,10 @@ bot.on('callback_query', async (query) => {
 
       bot.removeListener('message', listener);
       enviarResumoDetalhado(chatId);
+      activeChats.delete(chatId);
     };
 
-    bot.on('message', listener);
+    bot.once('message', listener);
 
   } else if (tipo === 'incluir_saldo') {
     bot.sendMessage(chatId, 'Digite o valor do saldo no formato: descrição, valor');
@@ -121,6 +130,7 @@ bot.on('callback_query', async (query) => {
       if (!descricao || isNaN(valor)) {
         bot.sendMessage(chatId, 'Formato inválido. Ex: Salário, 2000');
         bot.removeListener('message', listener);
+        activeChats.delete(chatId);
         return;
       }
 
@@ -129,14 +139,16 @@ bot.on('callback_query', async (query) => {
       gastos.push({ descricao: descricao.trim(), valor, tipo: 'saldo', data });
       bot.removeListener('message', listener);
       enviarResumoDetalhado(chatId);
+      activeChats.delete(chatId);
     };
 
-    bot.on('message', listener);
+    bot.once('message', listener);
 
   } else if (tipo === 'listar_gastos') {
     if (gastos.length === 0) return bot.sendMessage(chatId, 'Nenhum gasto registrado ainda.');
-    const lista = gastos.map((g, i) => `${i + 1}. ${g.descricao} - R$ ${g.valor.toFixed(2)} (${g.tipo}) [${g.data}]`).join('\n');
+    const lista = gastos.map((g, i) => `${i + 1}. ${g.descricao} - ${formatarValor(g.valor)} (${g.tipo}) [${g.data}]`).join('\n');
     bot.sendMessage(chatId, `Seus gastos:\n${lista}`).then(() => mostrarMenu(chatId));
+    activeChats.delete(chatId);
   } else if (tipo === 'ajuda') {
     bot.sendMessage(chatId, `
 Comandos disponíveis:
@@ -162,6 +174,7 @@ Comandos disponíveis:
 - 📋 Listar gastos
 - /removergasto N
     `).then(() => mostrarMenu(chatId));
+    activeChats.delete(chatId);
   }
 });
 
@@ -172,33 +185,31 @@ bot.onText(/\/resumo(.*)/, (msg, match) => {
   let lista = [];
 
   if (tipo === 'saldo') {
-    return bot.sendMessage(chatId, `Saldo atual: R$ ${saldo.toFixed(2)}`).then(() => mostrarMenu(chatId));
+    return bot.sendMessage(chatId, `Saldo atual: ${formatarValor(saldo)}`).then(() => mostrarMenu(chatId));
   }
 
   const mesAlvo = meses[tipo];
+  const ano = new Date().getFullYear();
 
   if (mesAlvo) {
-    const ano = new Date().getFullYear();
     lista = gastos.filter(g => g.data?.startsWith(`${ano}-${mesAlvo}`));
   } else if (['cartão', 'cartao', 'débito', 'debito', 'sodexo', 'dinheiro'].includes(tipo)) {
     const tipoFiltrado = (tipo === 'débito' || tipo === 'debito') ? 'dinheiro' : tipo.replace('ç', 'c');
     lista = gastos.filter(g => g.tipo === tipoFiltrado);
-  } else if (['comida', 'mercado'].includes(tipo)) {
+  } else if (tipo) {
     lista = gastos.filter(g => g.descricao.toLowerCase().includes(tipo));
   } else {
-    const hoje = new Date();
-    const ano = hoje.getFullYear();
-    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const mes = String(new Date().getMonth() + 1).padStart(2, '0');
     lista = gastos.filter(g => g.data?.startsWith(`${ano}-${mes}`));
   }
 
-  const total = lista.reduce((acc, g) => acc + g.valor, 0);
   if (lista.length === 0) {
-    bot.sendMessage(chatId, 'Nenhum item encontrado para esse resumo.').then(() => mostrarMenu(chatId));
-  } else {
-    const texto = lista.map((g, i) => `${i + 1}. ${g.descricao} - R$ ${g.valor.toFixed(2)} (${g.tipo}) [${g.data}]`).join('\n');
-    bot.sendMessage(chatId, `Resumo (${tipo || 'mês atual'}):\nTotal: R$ ${total.toFixed(2)}\n${texto}`).then(() => mostrarMenu(chatId));
+    return bot.sendMessage(chatId, 'Nenhum item encontrado para esse resumo.').then(() => mostrarMenu(chatId));
   }
+
+  const total = lista.reduce((acc, g) => acc + g.valor, 0);
+  const texto = lista.map((g, i) => `${i + 1}. ${g.descricao} - ${formatarValor(g.valor)} (${g.tipo}) [${g.data}]`).join('\n');
+  bot.sendMessage(chatId, `Resumo (${tipo || 'mês atual'}):\nTotal: ${formatarValor(total)}\n${texto}`).then(() => mostrarMenu(chatId));
 });
 
 bot.onText(/\/removergasto (\d+)/, (msg, match) => {
@@ -213,7 +224,7 @@ bot.onText(/\/removergasto (\d+)/, (msg, match) => {
   if (removido.tipo === 'dinheiro') saldo += removido.valor;
   if (removido.tipo === 'saldo') saldo -= removido.valor;
 
-  bot.sendMessage(chatId, `Gasto removido: ${removido.descricao} - R$ ${removido.valor.toFixed(2)} (${removido.tipo})`).then(() => enviarResumoDetalhado(chatId));
+  bot.sendMessage(chatId, `Gasto removido: ${removido.descricao} - ${formatarValor(removido.valor)} (${removido.tipo})`).then(() => enviarResumoDetalhado(chatId));
 });
 
 app.listen(port, () => {
