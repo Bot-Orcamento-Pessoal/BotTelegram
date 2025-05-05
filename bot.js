@@ -1,3 +1,4 @@
+HEAD
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
@@ -219,3 +220,4 @@ bot.onText(/\/removergasto (\d+)/, (msg, match) => {
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
 });
+c82592e (Atualiza bot.js corrigido)
