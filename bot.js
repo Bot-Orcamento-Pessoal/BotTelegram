@@ -1,6 +1,20 @@
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c';
-const bot = new TelegramBot(token, { polling: true });
+
+const token = process.env.BOT_TOKEN;
+const bot = new TelegramBot(token);
+const app = express();
+app.use(express.json());
+
+const url = process.env.RENDER_EXTERNAL_URL;
+const port = process.env.PORT || 3000;
+
+bot.setWebHook(`${url}/bot${token}`);
+
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 let saldo = 0;
 let gastos = [];
@@ -200,4 +214,8 @@ bot.onText(/\/removergasto (\d+)/, (msg, match) => {
   if (removido.tipo === 'saldo') saldo -= removido.valor;
 
   bot.sendMessage(chatId, `Gasto removido: ${removido.descricao} - R$ ${removido.valor.toFixed(2)} (${removido.tipo})`).then(() => enviarResumoDetalhado(chatId));
+});
+
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
 });
