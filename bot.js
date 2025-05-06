@@ -1,9 +1,16 @@
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+const bodyParser = require('body-parser');
 const fs = require('fs');
-const token = 'SEU_TOKEN_AQUI'; // Substitua pelo seu token real
 
-const bot = new TelegramBot(token, { polling: true });
+const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; // Substitua pelo token real do bot
+const bot = new TelegramBot(token);
+const app = express();
+const url = 'https://bottelegram-q3d6.onrender.com';
 
+app.use(bodyParser.json());
+
+// Dados
 let data = {
   saldo: 0,
   gastos: [],
@@ -46,6 +53,14 @@ const resumoDespesas = () => {
     .map((d, i) => `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} - ${d.pago ? '✅ Pago' : '❌ Pendente'}`)
     .join('\n');
 };
+
+// Webhook
+bot.setWebHook(`${url}/bot${token}`);
+
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, 'Escolha uma opção:', {
@@ -174,4 +189,10 @@ bot.on('callback_query', (query) => {
       }
       break;
   }
+});
+
+// Inicializa servidor
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
