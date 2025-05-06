@@ -2,18 +2,31 @@ const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.BOT_TOKEN;
+const port = process.env.PORT || 3000;
+const url = process.env.RENDER_EXTERNAL_URL;
+
 const bot = new TelegramBot(token);
+bot.setWebHook(`${url}/bot${token}`);
+
 const app = express();
 app.use(express.json());
 
-const url = process.env.RENDER_EXTERNAL_URL;
-const port = process.env.PORT || 3000;
-
-bot.setWebHook(`${url}/bot${token}`);
-
 app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+  try {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Erro ao processar update:', err);
+    res.sendStatus(500);
+  }
+});
+
+app.get('/', (req, res) => {
+  res.send('Bot está online!');
+});
+
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
 });
 
 let saldo = 0;
@@ -228,12 +241,4 @@ bot.onText(/\/removergasto (\d+)/, (msg, match) => {
   if (removido.tipo === 'saldo') saldo -= removido.valor;
 
   bot.sendMessage(chatId, `Gasto removido: ${removido.descricao} - ${formatarValor(removido.valor)} (${removido.tipo})`).then(() => enviarResumoDetalhado(chatId));
-});
-
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
-
-app.get('/', (req, res) => {
-  res.send('Bot está online!');
 });
