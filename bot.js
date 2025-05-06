@@ -8,10 +8,8 @@ const url = process.env.RENDER_EXTERNAL_URL;
 const app = express();
 app.use(express.json());
 
-const bot = new TelegramBot(token);
-if (url && token) {
-  bot.setWebHook(`${url}/bot${token}`);
-}
+const bot = new TelegramBot(token); // Correção: sem webHook direto
+bot.setWebHook(`${url}/bot${token}`);
 
 app.post(`/bot${token}`, (req, res) => {
   try {
@@ -31,8 +29,7 @@ app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
 });
 
-// ------------------- Lógica do bot --------------------
-
+// --- Lógica do bot ---
 let saldo = 0;
 let gastos = [];
 const activeChats = new Set();
