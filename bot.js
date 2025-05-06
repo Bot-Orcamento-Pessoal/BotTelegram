@@ -5,11 +5,13 @@ const token = process.env.BOT_TOKEN;
 const port = process.env.PORT || 3000;
 const url = process.env.RENDER_EXTERNAL_URL;
 
-const bot = new TelegramBot(token, { webHook: { port } });
-bot.setWebHook(`${url}/bot${token}`);
-
 const app = express();
 app.use(express.json());
+
+const bot = new TelegramBot(token);
+if (url && token) {
+  bot.setWebHook(`${url}/bot${token}`);
+}
 
 app.post(`/bot${token}`, (req, res) => {
   try {
@@ -28,6 +30,8 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
 });
+
+// ------------------- Lógica do bot --------------------
 
 let saldo = 0;
 let gastos = [];
