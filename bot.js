@@ -1,4 +1,4 @@
-const express = require('express');
+onst express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.BOT_TOKEN;
@@ -256,5 +256,3 @@ console.log(Servidor rodando na porta ${port});
 app.get('/', (req, res) => {
 res.send('Bot está online!');
 });
-
-                      
