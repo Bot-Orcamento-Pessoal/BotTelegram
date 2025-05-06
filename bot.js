@@ -1,246 +1,190 @@
-const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
 
-const token = process.env.BOT_TOKEN;
-const port = process.env.PORT || 3000;
-const url = process.env.RENDER_EXTERNAL_URL;
-
+// Configurações
+const token = process.env.TELEGRAM_TOKEN;
+const bot = new TelegramBot(token, { webHook: { port: process.env.PORT || 10000 } });
 const app = express();
-app.use(express.json());
+const DATA_FILE = 'dados.json';
 
-// Inicializa o bot com suporte a webhook
-const bot = new TelegramBot(token, { webHook: { port } });
+// Webhook
+const url = process.env.RENDER_EXTERNAL_URL;
 bot.setWebHook(`${url}/bot${token}`);
+app.use(bodyParser.json());
 
 app.post(`/bot${token}`, (req, res) => {
-  try {
-    bot.processUpdate(req.body);
-    res.sendStatus(200);
-  } catch (err) {
-    console.error('Erro ao processar update:', err);
-    res.sendStatus(500);
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// Utilitários
+function carregarDados() {
+  if (!fs.existsSync(DATA_FILE)) {
+    fs.writeFileSync(DATA_FILE, JSON.stringify({ saldo: 0, gastos: [] }, null, 2));
   }
-});
+  return JSON.parse(fs.readFileSync(DATA_FILE));
+}
 
-app.get('/', (req, res) => {
-  res.send('Bot está online!');
-});
+function salvarDados(dados) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(dados, null, 2));
+}
 
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
+function formatarGasto(gasto, index) {
+  return `${index + 1}. ${gasto.descricao} - R$ ${gasto.valor.toFixed(2)} (${gasto.tipo}) - ${gasto.data}`;
+}
 
-// --- Lógica do bot ---
-let saldo = 0;
-let gastos = [];
-const activeChats = new Set();
+function resumoGastos(gastos) {
+  const total = gastos.reduce((soma, g) => soma + g.valor, 0);
+  const porTipo = gastos.reduce((resumo, g) => {
+    resumo[g.tipo] = (resumo[g.tipo] || 0) + g.valor;
+    return resumo;
+  }, {});
+  return `Total: R$ ${total.toFixed(2)}\n` +
+    Object.entries(porTipo).map(([tipo, val]) => `${tipo}: R$ ${val.toFixed(2)}`).join('\n');
+}
 
-const meses = {
-  janeiro: '01', fevereiro: '02', março: '03', abril: '04',
-  maio: '05', junho: '06', julho: '07', agosto: '08',
-  setembro: '09', outubro: '10', novembro: '11', dezembro: '12'
-};
+function extrairMes(nomeMes) {
+  const meses = {
+    janeiro: '01', fevereiro: '02', março: '03', abril: '04', maio: '05', junho: '06',
+    julho: '07', agosto: '08', setembro: '09', outubro: '10', novembro: '11', dezembro: '12'
+  };
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = meses[nomeMes.toLowerCase()];
+  if (!mes) return null;
+  return { prefixo: `${ano}-${mes}`, nome: nomeMes };
+}
 
-const formatarValor = valor => `R$ ${valor.toFixed(2)}`;
-
-const mostrarMenu = (chatId) => {
-  bot.sendMessage(chatId, 'O que deseja fazer?', {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '➕ Incluir Saldo', callback_data: 'incluir_saldo' }],
-        [
-          { text: '💵 Gasto Dinheiro/Débito', callback_data: 'gasto_dinheiro' },
-          { text: '💳 Gasto Cartão', callback_data: 'gasto_cartao' },
-          { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
-        ],
-        [{ text: '📋 Listar Gastos', callback_data: 'listar_gastos' }],
-        [{ text: '❓ Ajuda', callback_data: 'ajuda' }]
-      ]
-    }
-  });
-};
-
-const enviarResumoDetalhado = (chatId) => {
-  const hoje = new Date();
-  const ano = hoje.getFullYear();
-  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-  const gastosMes = gastos.filter(g => g.data?.startsWith(`${ano}-${mes}`));
-
-  const totalGasto = gastosMes
-    .filter(g => ['dinheiro', 'cartao', 'sodexo'].includes(g.tipo))
-    .reduce((acc, g) => acc + g.valor, 0);
-
-  const gastoDinheiro = gastosMes.filter(g => g.tipo === 'dinheiro').reduce((acc, g) => acc + g.valor, 0);
-  const gastoCartao = gastosMes.filter(g => g.tipo === 'cartao').reduce((acc, g) => acc + g.valor, 0);
-  const gastoSodexo = gastosMes.filter(g => g.tipo === 'sodexo').reduce((acc, g) => acc + g.valor, 0);
-
-  bot.sendMessage(chatId, `
-Resumo do mês:
-- Total gasto: ${formatarValor(totalGasto)}
-- Saldo atual: ${formatarValor(saldo)}
-- Em dinheiro/débito: ${formatarValor(gastoDinheiro)}
-- No cartão: ${formatarValor(gastoCartao)}
-- Com SODEXO: ${formatarValor(gastoSodexo)}
-  `.trim()).then(() => mostrarMenu(chatId));
-};
+// Comandos
 
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, 'Bem-vindo ao bot de orçamento pessoal!');
-  mostrarMenu(msg.chat.id);
+  bot.sendMessage(msg.chat.id, 'Olá! Eu sou o bot de orçamento pessoal.\nUse /ajuda para ver os comandos disponíveis.');
 });
 
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const tipo = query.data;
-
-  if (activeChats.has(chatId)) return;
-  activeChats.add(chatId);
-
-  try {
-    await bot.answerCallbackQuery(query.id);
-  } catch (err) {
-    activeChats.delete(chatId);
-    return;
-  }
-
-  if (['gasto_dinheiro', 'gasto_cartao', 'gasto_sodexo'].includes(tipo)) {
-    const tipoNome = {
-      gasto_dinheiro: 'dinheiro/débito',
-      gasto_cartao: 'cartão',
-      gasto_sodexo: 'SODEXO'
-    }[tipo];
-
-    bot.sendMessage(chatId, `Digite os gastos (${tipoNome}) no formato: descrição, valor. Pode enviar vários separados por linha.`);
-
-    const listener = (msg) => {
-      if (msg.chat.id !== chatId) return;
-
-      const linhas = msg.text.split('\n');
-      const tipoGasto = tipo.replace('gasto_', '');
-      const data = new Date().toISOString().slice(0, 10);
-
-      linhas.forEach(linha => {
-        const partes = linha.split(',');
-        if (partes.length !== 2) return;
-        const [descricao, valorTexto] = partes;
-        const valor = parseFloat(valorTexto);
-        if (descricao && !isNaN(valor)) {
-          gastos.push({ descricao: descricao.trim(), valor, tipo: tipoGasto, data });
-          if (tipoGasto === 'dinheiro') saldo -= valor;
-        }
-      });
-
-      bot.removeListener('message', listener);
-      enviarResumoDetalhado(chatId);
-      activeChats.delete(chatId);
-    };
-
-    bot.once('message', listener);
-
-  } else if (tipo === 'incluir_saldo') {
-    bot.sendMessage(chatId, 'Digite o valor do saldo no formato: descrição, valor');
-
-    const listener = (msg) => {
-      if (msg.chat.id !== chatId) return;
-
-      const [descricao, valorTexto] = msg.text.split(',');
-      const valor = parseFloat(valorTexto);
-      if (!descricao || isNaN(valor)) {
-        bot.sendMessage(chatId, 'Formato inválido. Ex: Salário, 2000');
-        bot.removeListener('message', listener);
-        activeChats.delete(chatId);
-        return;
-      }
-
-      saldo += valor;
-      const data = new Date().toISOString().slice(0, 10);
-      gastos.push({ descricao: descricao.trim(), valor, tipo: 'saldo', data });
-      bot.removeListener('message', listener);
-      enviarResumoDetalhado(chatId);
-      activeChats.delete(chatId);
-    };
-
-    bot.once('message', listener);
-
-  } else if (tipo === 'listar_gastos') {
-    if (gastos.length === 0) return bot.sendMessage(chatId, 'Nenhum gasto registrado ainda.');
-    const lista = gastos.map((g, i) => `${i + 1}. ${g.descricao} - ${formatarValor(g.valor)} (${g.tipo}) [${g.data}]`).join('\n');
-    bot.sendMessage(chatId, `Seus gastos:\n${lista}`).then(() => mostrarMenu(chatId));
-    activeChats.delete(chatId);
-  } else if (tipo === 'ajuda') {
-    bot.sendMessage(chatId, `
+bot.onText(/\/ajuda/, (msg) => {
+  bot.sendMessage(msg.chat.id, `
 Comandos disponíveis:
-/start - Exibir menu
-/ajuda - Mostrar comandos
+/saldo - Ver saldo atual
+/adicionar - Adicionar novo gasto
+/listar - Listar todos os gastos
+/remover - Remover um gasto
+/resumo - Resumo dos gastos do mês
+/resumo nomeDoMes - Ex: /resumo abril
+/exportar - Exportar os dados em CSV
+/buscar palavra - Buscar gastos por palavra
+/editar numero nova descrição - Editar gasto
+  `.trim());
+});
 
-⬇️ SALDO
-- ➕ Incluir saldo
+bot.onText(/\/saldo/, (msg) => {
+  const dados = carregarDados();
+  bot.sendMessage(msg.chat.id, `Saldo atual: R$ ${dados.saldo.toFixed(2)}`);
+});
 
-⬇️ GASTOS
-- 💵 Dinheiro/Débito
-- 💳 Cartão
-- 🍽️ SODEXO
+bot.onText(/\/adicionar/, (msg) => {
+  bot.sendMessage(msg.chat.id, 'Envie os gastos no formato:\nDescrição - valor - tipo (dinheiro/cartão/sodexo)');
+});
 
-⬇️ RESUMOS
-- /resumo
-- /resumo abril
-- /resumo maio
-- /resumo saldo
-- /resumo cartão
+bot.on('message', (msg) => {
+  const dados = carregarDados();
+  if (msg.text && !msg.text.startsWith('/')) {
+    const linhas = msg.text.split('\n');
+    let novos = [];
+    linhas.forEach((linha) => {
+      const partes = linha.split(' - ');
+      if (partes.length !== 3) return;
+      const [descricao, valorStr, tipo] = partes;
+      const valor = parseFloat(valorStr.replace(',', '.'));
+      if (isNaN(valor)) return;
 
-⬇️ OUTROS
-- 📋 Listar gastos
-- /removergasto N
-    `).then(() => mostrarMenu(chatId));
-    activeChats.delete(chatId);
+      const gasto = {
+        descricao: descricao.trim(),
+        valor: valor,
+        tipo: tipo.trim().toLowerCase(),
+        data: new Date().toISOString().split('T')[0]
+      };
+      dados.gastos.push(gasto);
+      if (gasto.tipo === 'dinheiro' || gasto.tipo === 'débito') {
+        dados.saldo -= valor;
+      }
+      novos.push(gasto);
+    });
+
+    if (novos.length > 0) {
+      salvarDados(dados);
+      const resumo = resumoGastos(dados.gastos);
+      bot.sendMessage(msg.chat.id, `Gastos adicionados com sucesso!\n\nResumo do mês:\n${resumo}\nSaldo: R$ ${dados.saldo.toFixed(2)}`);
+    }
   }
 });
 
-bot.onText(/\/resumo(.*)/, (msg, match) => {
-  const tipo = match[1].trim().toLowerCase();
-  const chatId = msg.chat.id;
-
-  let lista = [];
-
-  if (tipo === 'saldo') {
-    return bot.sendMessage(chatId, `Saldo atual: ${formatarValor(saldo)}`).then(() => mostrarMenu(chatId));
-  }
-
-  const mesAlvo = meses[tipo];
-  const ano = new Date().getFullYear();
-
-  if (mesAlvo) {
-    lista = gastos.filter(g => g.data?.startsWith(`${ano}-${mesAlvo}`));
-  } else if (['cartão', 'cartao', 'débito', 'debito', 'sodexo', 'dinheiro'].includes(tipo)) {
-    const tipoFiltrado = (tipo === 'débito' || tipo === 'debito') ? 'dinheiro' : tipo.replace('ç', 'c');
-    lista = gastos.filter(g => g.tipo === tipoFiltrado);
-  } else if (tipo) {
-    lista = gastos.filter(g => g.descricao.toLowerCase().includes(tipo));
-  } else {
-    const mes = String(new Date().getMonth() + 1).padStart(2, '0');
-    lista = gastos.filter(g => g.data?.startsWith(`${ano}-${mes}`));
-  }
-
-  if (lista.length === 0) {
-    return bot.sendMessage(chatId, 'Nenhum item encontrado para esse resumo.').then(() => mostrarMenu(chatId));
-  }
-
-  const total = lista.reduce((acc, g) => acc + g.valor, 0);
-  const texto = lista.map((g, i) => `${i + 1}. ${g.descricao} - ${formatarValor(g.valor)} (${g.tipo}) [${g.data}]`).join('\n');
-  bot.sendMessage(chatId, `Resumo (${tipo || 'mês atual'}):\nTotal: ${formatarValor(total)}\n${texto}`).then(() => mostrarMenu(chatId));
+bot.onText(/\/listar/, (msg) => {
+  const dados = carregarDados();
+  if (dados.gastos.length === 0) return bot.sendMessage(msg.chat.id, 'Nenhum gasto registrado.');
+  const lista = dados.gastos.map(formatarGasto).join('\n');
+  bot.sendMessage(msg.chat.id, `Gastos:\n${lista}`);
 });
 
-bot.onText(/\/removergasto (\d+)/, (msg, match) => {
-  const chatId = msg.chat.id;
+bot.onText(/\/remover (\d+)/, (msg, match) => {
+  const dados = carregarDados();
   const index = parseInt(match[1]) - 1;
-
-  if (index < 0 || index >= gastos.length) {
-    return bot.sendMessage(chatId, 'Índice inválido.').then(() => mostrarMenu(chatId));
+  if (index < 0 || index >= dados.gastos.length) {
+    return bot.sendMessage(msg.chat.id, 'Número inválido.');
   }
+  const removido = dados.gastos.splice(index, 1)[0];
+  if (removido.tipo === 'dinheiro' || removido.tipo === 'débito') {
+    dados.saldo += removido.valor;
+  }
+  salvarDados(dados);
+  bot.sendMessage(msg.chat.id, `Gasto removido: ${removido.descricao} - R$ ${removido.valor.toFixed(2)}`);
+});
 
-  const removido = gastos.splice(index, 1)[0];
-  if (removido.tipo === 'dinheiro') saldo += removido.valor;
-  if (removido.tipo === 'saldo') saldo -= removido.valor;
+bot.onText(/\/resumo(?: (\w+))?/, (msg, match) => {
+  const dados = carregarDados();
+  const filtro = match[1];
+  let gastos = dados.gastos;
+  if (filtro) {
+    const info = extrairMes(filtro);
+    if (!info) return bot.sendMessage(msg.chat.id, 'Mês inválido.');
+    gastos = gastos.filter(g => g.data.startsWith(info.prefixo));
+    bot.sendMessage(msg.chat.id, `Resumo de ${info.nome}:\n${resumoGastos(gastos)}\nSaldo: R$ ${dados.saldo.toFixed(2)}`);
+  } else {
+    const hoje = new Date();
+    const prefixo = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+    gastos = gastos.filter(g => g.data.startsWith(prefixo));
+    bot.sendMessage(msg.chat.id, `Resumo do mês:\n${resumoGastos(gastos)}\nSaldo: R$ ${dados.saldo.toFixed(2)}`);
+  }
+});
 
-  bot.sendMessage(chatId, `Gasto removido: ${removido.descricao} - ${formatarValor(removido.valor)} (${removido.tipo})`).then(() => enviarResumoDetalhado(chatId));
+bot.onText(/\/buscar (.+)/, (msg, match) => {
+  const dados = carregarDados();
+  const termo = match[1].toLowerCase();
+  const encontrados = dados.gastos
+    .filter(g => g.descricao.toLowerCase().includes(termo))
+    .map(formatarGasto);
+  if (encontrados.length === 0) return bot.sendMessage(msg.chat.id, 'Nenhum gasto encontrado.');
+  bot.sendMessage(msg.chat.id, `Gastos encontrados:\n${encontrados.join('\n')}`);
+});
+
+bot.onText(/\/editar (\d+) (.+)/, (msg, match) => {
+  const dados = carregarDados();
+  const index = parseInt(match[1]) - 1;
+  const novaDescricao = match[2].trim();
+  if (index < 0 || index >= dados.gastos.length) return bot.sendMessage(msg.chat.id, 'Número inválido.');
+  dados.gastos[index].descricao = novaDescricao;
+  salvarDados(dados);
+  bot.sendMessage(msg.chat.id, 'Gasto atualizado com sucesso.');
+});
+
+bot.onText(/\/exportar/, (msg) => {
+  const dados = carregarDados();
+  if (dados.gastos.length === 0) return bot.sendMessage(msg.chat.id, 'Nenhum dado para exportar.');
+  const csv = 'Descrição,Valor,Tipo,Data\n' + dados.gastos.map(g =>
+    `${g.descricao},${g.valor},${g.tipo},${g.data}`).join('\n');
+  const filePath = path.join(__dirname, 'export.csv');
+  fs.writeFileSync(filePath, csv);
+  bot.sendDocument(msg.chat.id, filePath);
 });
