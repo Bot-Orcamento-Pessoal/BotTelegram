@@ -2,16 +2,15 @@ const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.BOT_TOKEN;
-const bot = new TelegramBot(token, { webHook: true });
+const bot = new TelegramBot(token, { polling: false }); // Correção aqui
 const app = express();
 app.use(express.json());
 
 const url = process.env.RENDER_EXTERNAL_URL;
 const port = process.env.PORT || 3000;
 
-bot.setWebHook(`${url}/bot${token}`);
-
 app.post(`/bot${token}`, (req, res) => {
+  console.log('Recebido webhook:', req.body); // Debug
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
@@ -225,9 +224,11 @@ bot.onText(/\/removergasto (\d+)/, (msg, match) => {
   bot.sendMessage(chatId, `Gasto removido: ${removido.descricao} - ${formatarValor(removido.valor)} (${removido.tipo})`).then(() => enviarResumoDetalhado(chatId));
 });
 
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
 app.get('/', (req, res) => {
   res.send('Bot está online!');
+});
+
+app.listen(port, () => {
+  bot.setWebHook(`${url}/bot${token}`);
+  console.log(`Servidor rodando na porta ${port}`);
 });
