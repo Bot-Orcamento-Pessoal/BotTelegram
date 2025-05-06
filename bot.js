@@ -51,7 +51,10 @@ const enviarResumoDetalhado = (chatId) => {
   const mes = String(hoje.getMonth() + 1).padStart(2, '0');
   const gastosMes = gastos.filter(g => g.data?.startsWith(`${ano}-${mes}`));
 
-  const totalGasto = gastosMes.reduce((acc, g) => acc + g.valor, 0);
+  const totalGasto = gastosMes
+    .filter(g => ['dinheiro', 'cartao', 'sodexo'].includes(g.tipo))
+    .reduce((acc, g) => acc + g.valor, 0);
+
   const gastoDinheiro = gastosMes.filter(g => g.tipo === 'dinheiro').reduce((acc, g) => acc + g.valor, 0);
   const gastoCartao = gastosMes.filter(g => g.tipo === 'cartao').reduce((acc, g) => acc + g.valor, 0);
   const gastoSodexo = gastosMes.filter(g => g.tipo === 'sodexo').reduce((acc, g) => acc + g.valor, 0);
@@ -230,6 +233,7 @@ bot.onText(/\/removergasto (\d+)/, (msg, match) => {
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
 });
+
 app.get('/', (req, res) => {
   res.send('Bot está online!');
 });
