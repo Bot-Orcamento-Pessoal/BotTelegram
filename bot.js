@@ -1,6 +1,6 @@
 // bot.js const TelegramBot = require('node-telegram-bot-api'); const fs = require('fs'); const express = require('express'); const bodyParser = require('body-parser');
 
-const token = process.env.BOT_TOKEN || 'SEU_TOKEN_AQUI'; const bot = new TelegramBot(token); const app = express(); app.use(bodyParser.json());
+const token = process.env.BOT_TOKEN || '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; const bot = new TelegramBot(token); const app = express(); app.use(bodyParser.json());
 
 let data = { saldo: 0, gastos: [], despesasFixas: [] };
 
