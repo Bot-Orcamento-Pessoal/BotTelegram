@@ -1,10 +1,9 @@
-// bot.js
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 const express = require('express');
 const bodyParser = require('body-parser');
 
-const token = process.env.BOT_TOKEN || '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; // Substitua por variável de ambiente no Render
+const token = process.env.BOT_TOKEN || '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c';
 const bot = new TelegramBot(token);
 const app = express();
 app.use(bodyParser.json());
@@ -65,6 +64,7 @@ const botoesPrincipais = {
   }
 };
 
+// Define o Webhook com sua URL do Render
 bot.setWebHook('https://bottelegram-q3d6.onrender.com/bot' + token);
 
 app.post('/bot' + token, (req, res) => {
@@ -82,9 +82,11 @@ bot.on('callback_query', (query) => {
 
   switch (tipo) {
     case 'incluir_saldo':
-      bot.sendMessage(chatId, 'Digite o valor a ser adicionado:');
+      bot.sendMessage(chatId, 'Digite a descrição e o valor (ex: Salário, 1500):');
       bot.once('message', (msg) => {
-        const valor = parseFloat(msg.text.replace(',', '.'));
+        const partes = msg.text.split(',').map(p => p.trim());
+        const valor = parseFloat(partes.pop().replace(',', '.'));
+        const nome = partes.join(' ').trim();
         if (!isNaN(valor)) {
           data.saldo += valor;
           salvar();
@@ -104,7 +106,7 @@ bot.on('callback_query', (query) => {
         if (nome && !isNaN(valor)) {
           data.despesasFixas.push({ nome, valor, pago: false });
           salvar();
-          bot.sendMessage(chatId, 'Despesa registrada.', botoesPrincipais);
+          bot.sendMessage(chatId, 'Despesa registrada com sucesso.', botoesPrincipais);
           bot.sendMessage(chatId, resumoDespesas(), botoesPrincipais);
         } else {
           bot.sendMessage(chatId, 'Formato inválido. Use: Nome, valor', botoesPrincipais);
@@ -179,8 +181,9 @@ bot.on('callback_query', (query) => {
           data.despesasFixas[index].pago = true;
           data.saldo -= despesa.valor;
           salvar();
-          bot.sendMessage(chatId, `Despesa "${despesa.nome}" marcada como paga.`, botoesPrincipais);
+          bot.sendMessage(chatId, `Despesa "${despesa.nome}" marcada como paga. Valor de R$ ${despesa.valor.toFixed(2)} subtraído do saldo.`, botoesPrincipais);
           bot.sendMessage(chatId, resumoDespesas(), botoesPrincipais);
+          bot.sendMessage(chatId, resumo(), botoesPrincipais);
         } else {
           bot.sendMessage(chatId, 'Despesa inválida ou já paga.', botoesPrincipais);
         }
