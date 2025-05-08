@@ -1,205 +1,198 @@
-// bot.js
 const TelegramBot = require('node-telegram-bot-api');
-const fs = require('fs');
 const express = require('express');
 const bodyParser = require('body-parser');
+const fs = require('fs');
 
-const token = process.env.BOT_TOKEN || '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c';
+const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c';
 const bot = new TelegramBot(token, { polling: true });
+
 const app = express();
 app.use(bodyParser.json());
 
-let data = { saldo: 0, gastos: [], despesasFixas: [] };
+const PORT = process.env.PORT || 3000;
 
-const salvar = () => {
-  fs.writeFileSync('not.json', JSON.stringify(data, null, 2));
-};
+let dados = { saldo: 0, gastos: [], despesas: [], usuarios: [] };
 
-const carregar = () => {
-  if (fs.existsSync('not.json')) {
-    data = JSON.parse(fs.readFileSync('not.json'));
+function salvarDados() {
+  fs.writeFileSync('dados.json', JSON.stringify(dados));
+}
+
+function carregarDados() {
+  if (fs.existsSync('dados.json')) {
+    dados = JSON.parse(fs.readFileSync('dados.json'));
   }
-};
+}
 
-carregar();
+carregarDados();
 
-const resumo = () => {
-  const totalGasto = data.gastos.filter(g => g.tipo === 'dinheiro').reduce((sum, g) => sum + g.valor, 0);
-  const gastosCartao = data.gastos.filter(g => g.tipo === 'cartao').reduce((sum, g) => sum + g.valor, 0);
-  const gastosSodexo = data.gastos.filter(g => g.tipo === 'sodexo').reduce((sum, g) => sum + g.valor, 0);
+function formatarResumo() {
+  const dinheiro = dados.gastos.filter(g => g.tipo === 'dinheiro').reduce((s, g) => s + g.valor, 0);
+  const cartao = dados.gastos.filter(g => g.tipo === 'cartao').reduce((s, g) => s + g.valor, 0);
+  const sodexo = dados.gastos.filter(g => g.tipo === 'sodexo').reduce((s, g) => s + g.valor, 0);
 
-  return `Resumo atual:
-Saldo: R$ ${data.saldo.toFixed(2)}
-Gasto em dinheiro/débito: R$ ${totalGasto.toFixed(2)}
-Gasto no cartão: R$ ${gastosCartao.toFixed(2)}
-Gasto no SODEXO: R$ ${gastosSodexo.toFixed(2)}`;
-};
+  return `Resumo atual:\nSaldo: R$ ${dados.saldo.toFixed(2)}\nGasto em dinheiro/débito: R$ ${dinheiro.toFixed(2)}\nGasto no cartão: R$ ${cartao.toFixed(2)}\nGasto no SODEXO: R$ ${sodexo.toFixed(2)}`;
+}
 
-const resumoDespesas = () => {
-  if (data.despesasFixas.length === 0) return 'Nenhuma despesa cadastrada.';
-  return data.despesasFixas.map((d, i) =>
-    `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} - ${d.pago ? '✅ Pago' : '❌ Pendente'}`
-  ).join('\n');
-};
-
-const botoesPrincipais = {
-  reply_markup: {
-    inline_keyboard: [
-      [
-        { text: '➕ Incluir saldo', callback_data: 'incluir_saldo' },
-        { text: '🧾 Incluir despesa', callback_data: 'incluir_despesa' }
-      ],
-      [
-        { text: '💵 Gasto dinheiro', callback_data: 'gasto_dinheiro' },
-        { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' },
-        { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
-      ],
-      [
-        { text: '📋 Listar gastos', callback_data: 'listar_gastos' },
-        { text: '📄 Listar despesas', callback_data: 'listar_despesas' }
-      ],
-      [
-        { text: '✅ Pagar despesa', callback_data: 'pagar_despesa' }
+function menuPrincipal() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '➕ Incluir saldo', callback_data: 'incluir_saldo' },
+          { text: '➕ Incluir despesa', callback_data: 'incluir_despesa' }
+        ],
+        [
+          { text: '💵 Gasto dinheiro', callback_data: 'gasto_dinheiro' },
+          { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' },
+          { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
+        ],
+        [
+          { text: '📋 Listar gastos', callback_data: 'listar_gastos' },
+          { text: '📄 Listar despesas', callback_data: 'listar_despesas' }
+        ],
+        [
+          { text: '✅ Pagar despesa', callback_data: 'pagar_despesa' }
+        ]
       ]
-    ]
+    }
+  };
+}
+
+function botaoVoltarMenu() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '⬅️ Voltar ao menu', callback_data: 'voltar_menu' }]
+      ]
+    }
+  };
+}
+
+function notificarTodos(mensagem, excetoId) {
+  dados.usuarios.forEach(id => {
+    if (id !== excetoId) {
+      bot.sendMessage(id, mensagem, botaoVoltarMenu());
+    }
+  });
+}
+
+const estadosUsuario = {};
+
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!dados.usuarios.includes(chatId)) {
+    dados.usuarios.push(chatId);
+    salvarDados();
   }
-};
 
-bot.setWebHook('https://bottelegram-q3d6.onrender.com/bot' + token);
+  if (msg.text === '/start') {
+    bot.sendMessage(chatId, 'Bem-vindo ao bot de orçamento!', menuPrincipal());
+    return;
+  }
 
-app.post('/bot' + token, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+  const estado = estadosUsuario[chatId];
+  if (!estado) return;
+
+  const linhas = msg.text.split('\n');
+  const resultados = [];
+
+  linhas.forEach(linha => {
+    const partes = linha.split(',');
+    if (partes.length === 2) {
+      const nome = partes[0].trim();
+      const valor = parseFloat(partes[1].trim());
+
+      if (!isNaN(valor)) {
+        if (estado.tipo === 'despesa') {
+          dados.despesas.push({ nome, valor, pago: false });
+          resultados.push(`${nome} - R$ ${valor.toFixed(2)} (pendente)`);
+        } else if (estado.tipo === 'saldo') {
+          dados.saldo += valor;
+          resultados.push(`${nome} - R$ ${valor.toFixed(2)}`);
+        } else {
+          dados.gastos.push({ nome, valor, tipo: estado.tipo });
+          if (estado.tipo === 'dinheiro') dados.saldo -= valor;
+          resultados.push(`${nome} - R$ ${valor.toFixed(2)}`);
+        }
+      }
+    }
+  });
+
+  delete estadosUsuario[chatId];
+  salvarDados();
+
+  const tipoStr = estado.tipo === 'despesa' ? 'Despesas' : (estado.tipo === 'saldo' ? 'Saldo' : 'Gastos');
+  const resposta = `${tipoStr} registradas:\n${resultados.join('\n')}\n\n${formatarResumo()}`;
+  bot.sendMessage(chatId, resposta, botaoVoltarMenu());
+  notificarTodos(resposta, chatId);
 });
 
-bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, 'Escolha uma opção:', botoesPrincipais);
-});
-
-bot.on('callback_query', (query) => {
+bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const tipo = query.data;
 
-  switch (tipo) {
-    case 'incluir_saldo':
-      bot.sendMessage(chatId, 'Digite a descrição e o valor (ex: Salário, 1500):');
-      bot.once('message', (msg) => {
-        const partes = msg.text.split(',').map(p => p.trim());
-        const valor = parseFloat(partes.pop().replace(',', '.'));
-        const nome = partes.join(' ').trim();
-        if (!isNaN(valor)) {
-          data.saldo += valor;
-          salvar();
-          bot.sendMessage(chatId, `Saldo atualizado!\n\n${resumo()}`, botoesPrincipais);
-        } else {
-          bot.sendMessage(chatId, 'Valor inválido.', botoesPrincipais);
-        }
-      });
-      break;
+  if (tipo === 'voltar_menu') {
+    bot.sendMessage(chatId, 'Menu principal:', menuPrincipal());
+    return;
+  }
 
-    case 'incluir_despesa':
-      bot.sendMessage(chatId, 'Digite as despesas no formato "nome, valor", um por linha (ex: Luz, 150):');
-      bot.once('message', (msg) => {
-        const linhas = msg.text.split('\n');
-        let despesasRegistradas = [];
+  if (tipo.startsWith('incluir_') || tipo.startsWith('gasto_')) {
+    const tipoA = tipo.split('_')[1];
+    estadosUsuario[chatId] = { tipo: tipoA === 'despesa' ? 'despesa' : tipoA };
 
-        for (let linha of linhas) {
-          const partes = linha.trim().split(',').map(p => p.trim());
-          const valor = parseFloat(partes.pop().replace(',', '.'));
-          const nome = partes.join(' ').trim();
-          if (nome && !isNaN(valor)) {
-            data.despesasFixas.push({ nome, valor, pago: false });
-            despesasRegistradas.push(`${nome} - R$ ${valor.toFixed(2)}`);
-          }
-        }
+    const instrução = tipoA === 'despesa'
+      ? 'Digite as despesas no formato "nome, valor", uma por linha:'
+      : 'Digite os valores no formato "nome, valor", uma por linha:';
 
-        salvar();
-        if (despesasRegistradas.length > 0) {
-          bot.sendMessage(chatId, `Despesas registradas:\n${despesasRegistradas.join('\n')}\n\n${resumoDespesas()}`, botoesPrincipais);
-        } else {
-          bot.sendMessage(chatId, 'Nenhuma despesa válida foi informada. Use: Nome, valor', botoesPrincipais);
-        }
-      });
-      break;
+    bot.sendMessage(chatId, instrução);
+  }
 
-    case 'gasto_dinheiro':
-    case 'gasto_cartao':
-    case 'gasto_sodexo':
-      bot.sendMessage(chatId, 'Digite os gastos no formato "nome, valor", um por linha (ex: Uber, 30):');
-      bot.once('message', (msg) => {
-        const linhas = msg.text.split('\n');
-        const tipoGasto = tipo.split('_')[1];
-        let gastosRegistrados = [];
+  if (tipo === 'listar_gastos') {
+    const lista = dados.gastos.map(g => `${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo})`).join('\n') || 'Nenhum gasto registrado.';
+    bot.sendMessage(chatId, `Gastos:\n${lista}`, botaoVoltarMenu());
+  }
 
-        for (let linha of linhas) {
-          const partes = linha.trim().split(',').map(p => p.trim());
-          const valor = parseFloat(partes.pop().replace(',', '.'));
-          const nome = partes.join(' ').trim();
-          if (nome && !isNaN(valor)) {
-            data.gastos.push({ nome, valor, tipo: tipoGasto });
-            if (tipoGasto === 'dinheiro') {
-              data.saldo -= valor;
-            }
-            gastosRegistrados.push(`${nome} - R$ ${valor.toFixed(2)}`);
-          }
-        }
+  if (tipo === 'listar_despesas') {
+    const lista = dados.despesas.map((d, i) =>
+      `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} [${d.pago ? 'Pago' : 'Pendente'}]`
+    ).join('\n') || 'Nenhuma despesa registrada.';
+    bot.sendMessage(chatId, `Despesas:\n${lista}`, botaoVoltarMenu());
+  }
 
-        salvar();
-        if (gastosRegistrados.length > 0) {
-          bot.sendMessage(chatId, `Gastos registrados:\n${gastosRegistrados.join('\n')}\n\n${resumo()}`, botoesPrincipais);
-        } else {
-          bot.sendMessage(chatId, 'Nenhum gasto válido foi informado. Use: Nome, valor', botoesPrincipais);
-        }
-      });
-      break;
+  if (tipo === 'pagar_despesa') {
+    const pendentes = dados.despesas.map((d, i) => ({ ...d, index: i })).filter(d => !d.pago);
 
-    case 'listar_gastos':
-      if (data.gastos.length === 0) {
-        bot.sendMessage(chatId, 'Nenhum gasto registrado.', botoesPrincipais);
-      } else {
-        const lista = data.gastos.map((g, i) => `${i + 1}. ${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo})`).join('\n');
-        bot.sendMessage(chatId, lista, botoesPrincipais);
-      }
-      break;
+    if (pendentes.length === 0) {
+      bot.sendMessage(chatId, 'Nenhuma despesa pendente.', botaoVoltarMenu());
+      return;
+    }
 
-    case 'listar_despesas':
-      bot.sendMessage(chatId, resumoDespesas(), botoesPrincipais);
-      break;
+    const botoes = pendentes.map(d => [{
+      text: `${d.nome} - R$ ${d.valor.toFixed(2)}`,
+      callback_data: `pagar_${d.index}`
+    }]);
 
-    case 'pagar_despesa':
-      const pendentes = data.despesasFixas.filter(d => !d.pago);
-      if (pendentes.length === 0) {
-        bot.sendMessage(chatId, 'Nenhuma despesa pendente.', botoesPrincipais);
-      } else {
-        const botoes = pendentes.map((d, i) => [{
-          text: `${d.nome} - R$ ${d.valor.toFixed(2)}`,
-          callback_data: `pagar_${i}`
-        }]);
-        bot.sendMessage(chatId, 'Escolha uma despesa para marcar como paga:', {
-          reply_markup: { inline_keyboard: botoes }
-        });
-      }
-      break;
+    bot.sendMessage(chatId, 'Selecione a despesa para marcar como paga:', {
+      reply_markup: { inline_keyboard: botoes }
+    });
+  }
 
-    default:
-      if (tipo.startsWith('pagar_')) {
-        const index = parseInt(tipo.split('_')[1]);
-        if (!isNaN(index) && data.despesasFixas[index] && !data.despesasFixas[index].pago) {
-          const despesa = data.despesasFixas[index];
-          data.despesasFixas[index].pago = true;
-          data.saldo -= despesa.valor;
-          salvar();
-          bot.sendMessage(chatId, `Despesa "${despesa.nome}" marcada como paga. Valor de R$ ${despesa.valor.toFixed(2)} subtraído do saldo.`, botoesPrincipais);
-          bot.sendMessage(chatId, resumoDespesas(), botoesPrincipais);
-          bot.sendMessage(chatId, resumo(), botoesPrincipais);
-        } else {
-          bot.sendMessage(chatId, 'Despesa inválida ou já paga.', botoesPrincipais);
-        }
-      }
-      break;
+  if (tipo.startsWith('pagar_')) {
+    const index = parseInt(tipo.split('_')[1]);
+    const despesa = dados.despesas[index];
+
+    if (despesa && !despesa.pago) {
+      despesa.pago = true;
+      dados.saldo -= despesa.valor;
+      salvarDados();
+
+      const resposta = `Despesa "${despesa.nome}" marcada como paga.\n\n${formatarResumo()}`;
+      bot.sendMessage(chatId, resposta, botaoVoltarMenu());
+      notificarTodos(resposta, chatId);
+    }
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log('Servidor rodando...');
-});
+app.get('/', (req, res) => res.send('Bot está rodando!'));
+app.listen(PORT, () => console.log('Servidor rodando...'));
