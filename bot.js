@@ -3,14 +3,26 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 
-const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c';
-const bot = new TelegramBot(token, { polling: true });
+const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; // Substitua pelo token do seu bot
+const bot = new TelegramBot(token);
+
+// Ativa o webhook com sua URL do Render
+bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
 
 const app = express();
 app.use(bodyParser.json());
 
-const PORT = process.env.PORT || 3000;
+// Rota para o Telegram enviar as atualizações
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
+const PORT = process.env.PORT || 3000;
+app.get('/', (req, res) => res.send('Bot está rodando com webhook!'));
+app.listen(PORT, () => console.log('Servidor rodando com webhook...'));
+
+// Dados em memória + persistência
 let dados = { saldo: 0, gastos: [], despesas: [], usuarios: [] };
 
 function salvarDados() {
@@ -25,11 +37,11 @@ function carregarDados() {
 
 carregarDados();
 
+// Funções de utilidade
 function formatarResumo() {
   const dinheiro = dados.gastos.filter(g => g.tipo === 'dinheiro').reduce((s, g) => s + g.valor, 0);
   const cartao = dados.gastos.filter(g => g.tipo === 'cartao').reduce((s, g) => s + g.valor, 0);
   const sodexo = dados.gastos.filter(g => g.tipo === 'sodexo').reduce((s, g) => s + g.valor, 0);
-
   return `Resumo atual:\nSaldo: R$ ${dados.saldo.toFixed(2)}\nGasto em dinheiro/débito: R$ ${dinheiro.toFixed(2)}\nGasto no cartão: R$ ${cartao.toFixed(2)}\nGasto no SODEXO: R$ ${sodexo.toFixed(2)}`;
 }
 
@@ -37,22 +49,10 @@ function menuPrincipal() {
   return {
     reply_markup: {
       inline_keyboard: [
-        [
-          { text: '➕ Incluir saldo', callback_data: 'incluir_saldo' },
-          { text: '➕ Incluir despesa', callback_data: 'incluir_despesa' }
-        ],
-        [
-          { text: '💵 Gasto dinheiro', callback_data: 'gasto_dinheiro' },
-          { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' },
-          { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
-        ],
-        [
-          { text: '📋 Listar gastos', callback_data: 'listar_gastos' },
-          { text: '📄 Listar despesas', callback_data: 'listar_despesas' }
-        ],
-        [
-          { text: '✅ Pagar despesa', callback_data: 'pagar_despesa' }
-        ]
+        [{ text: '➕ Incluir saldo', callback_data: 'incluir_saldo' }, { text: '➕ Incluir despesa', callback_data: 'incluir_despesa' }],
+        [{ text: '💵 Gasto dinheiro', callback_data: 'gasto_dinheiro' }, { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' }, { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }],
+        [{ text: '📋 Listar gastos', callback_data: 'listar_gastos' }, { text: '📄 Listar despesas', callback_data: 'listar_despesas' }],
+        [{ text: '✅ Pagar despesa', callback_data: 'pagar_despesa' }]
       ]
     }
   };
@@ -61,9 +61,7 @@ function menuPrincipal() {
 function botaoVoltarMenu() {
   return {
     reply_markup: {
-      inline_keyboard: [
-        [{ text: '⬅️ Voltar ao menu', callback_data: 'voltar_menu' }]
-      ]
+      inline_keyboard: [[{ text: '⬅️ Voltar ao menu', callback_data: 'voltar_menu' }]]
     }
   };
 }
@@ -76,9 +74,10 @@ function notificarTodos(mensagem, excetoId) {
   });
 }
 
-const estadosUsuario = {};
+const estadosUsuario = {}; // controle de estado por usuário
 
-bot.on('message', async (msg) => {
+// Lógica de mensagens
+bot.on('message', (msg) => {
   const chatId = msg.chat.id;
 
   if (!dados.usuarios.includes(chatId)) {
@@ -102,7 +101,6 @@ bot.on('message', async (msg) => {
     if (partes.length === 2) {
       const nome = partes[0].trim();
       const valor = parseFloat(partes[1].trim());
-
       if (!isNaN(valor)) {
         if (estado.tipo === 'despesa') {
           dados.despesas.push({ nome, valor, pago: false });
@@ -128,7 +126,8 @@ bot.on('message', async (msg) => {
   notificarTodos(resposta, chatId);
 });
 
-bot.on('callback_query', async (query) => {
+// Lógica dos botões
+bot.on('callback_query', (query) => {
   const chatId = query.message.chat.id;
   const tipo = query.data;
 
@@ -140,12 +139,10 @@ bot.on('callback_query', async (query) => {
   if (tipo.startsWith('incluir_') || tipo.startsWith('gasto_')) {
     const tipoA = tipo.split('_')[1];
     estadosUsuario[chatId] = { tipo: tipoA === 'despesa' ? 'despesa' : tipoA };
-
-    const instrução = tipoA === 'despesa'
+    const instrucao = tipoA === 'despesa'
       ? 'Digite as despesas no formato "nome, valor", uma por linha:'
       : 'Digite os valores no formato "nome, valor", uma por linha:';
-
-    bot.sendMessage(chatId, instrução);
+    bot.sendMessage(chatId, instrucao);
   }
 
   if (tipo === 'listar_gastos') {
@@ -154,25 +151,20 @@ bot.on('callback_query', async (query) => {
   }
 
   if (tipo === 'listar_despesas') {
-    const lista = dados.despesas.map((d, i) =>
-      `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} [${d.pago ? 'Pago' : 'Pendente'}]`
-    ).join('\n') || 'Nenhuma despesa registrada.';
+    const lista = dados.despesas.map((d, i) => `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} [${d.pago ? 'Pago' : 'Pendente'}]`).join('\n') || 'Nenhuma despesa registrada.';
     bot.sendMessage(chatId, `Despesas:\n${lista}`, botaoVoltarMenu());
   }
 
   if (tipo === 'pagar_despesa') {
     const pendentes = dados.despesas.map((d, i) => ({ ...d, index: i })).filter(d => !d.pago);
-
     if (pendentes.length === 0) {
       bot.sendMessage(chatId, 'Nenhuma despesa pendente.', botaoVoltarMenu());
       return;
     }
-
     const botoes = pendentes.map(d => [{
       text: `${d.nome} - R$ ${d.valor.toFixed(2)}`,
       callback_data: `pagar_${d.index}`
     }]);
-
     bot.sendMessage(chatId, 'Selecione a despesa para marcar como paga:', {
       reply_markup: { inline_keyboard: botoes }
     });
@@ -181,18 +173,13 @@ bot.on('callback_query', async (query) => {
   if (tipo.startsWith('pagar_')) {
     const index = parseInt(tipo.split('_')[1]);
     const despesa = dados.despesas[index];
-
     if (despesa && !despesa.pago) {
       despesa.pago = true;
       dados.saldo -= despesa.valor;
       salvarDados();
-
       const resposta = `Despesa "${despesa.nome}" marcada como paga.\n\n${formatarResumo()}`;
       bot.sendMessage(chatId, resposta, botaoVoltarMenu());
       notificarTodos(resposta, chatId);
     }
   }
 });
-
-app.get('/', (req, res) => res.send('Bot está rodando!'));
-app.listen(PORT, () => console.log('Servidor rodando...'));
