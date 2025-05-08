@@ -3,26 +3,14 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 
-const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; // Substitua pelo token do seu bot
-const bot = new TelegramBot(token);
-
-// Ativa o webhook com sua URL do Render
-bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
+const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; // Substitua pelo seu token real
+const bot = new TelegramBot(token); // webhook, sem polling
 
 const app = express();
 app.use(bodyParser.json());
 
-// Rota para o Telegram enviar as atualizações
-app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot está rodando com webhook!'));
-app.listen(PORT, () => console.log('Servidor rodando com webhook...'));
 
-// Dados em memória + persistência
 let dados = { saldo: 0, gastos: [], despesas: [], usuarios: [] };
 
 function salvarDados() {
@@ -37,7 +25,6 @@ function carregarDados() {
 
 carregarDados();
 
-// Funções de utilidade
 function formatarResumo() {
   const dinheiro = dados.gastos.filter(g => g.tipo === 'dinheiro').reduce((s, g) => s + g.valor, 0);
   const cartao = dados.gastos.filter(g => g.tipo === 'cartao').reduce((s, g) => s + g.valor, 0);
@@ -49,10 +36,22 @@ function menuPrincipal() {
   return {
     reply_markup: {
       inline_keyboard: [
-        [{ text: '➕ Incluir saldo', callback_data: 'incluir_saldo' }, { text: '➕ Incluir despesa', callback_data: 'incluir_despesa' }],
-        [{ text: '💵 Gasto dinheiro', callback_data: 'gasto_dinheiro' }, { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' }, { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }],
-        [{ text: '📋 Listar gastos', callback_data: 'listar_gastos' }, { text: '📄 Listar despesas', callback_data: 'listar_despesas' }],
-        [{ text: '✅ Pagar despesa', callback_data: 'pagar_despesa' }]
+        [
+          { text: '➕ Incluir saldo', callback_data: 'incluir_saldo' },
+          { text: '➕ Incluir despesa', callback_data: 'incluir_despesa' }
+        ],
+        [
+          { text: '💵 Gasto dinheiro', callback_data: 'gasto_dinheiro' },
+          { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' },
+          { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
+        ],
+        [
+          { text: '📋 Listar gastos', callback_data: 'listar_gastos' },
+          { text: '📄 Listar despesas', callback_data: 'listar_despesas' }
+        ],
+        [
+          { text: '✅ Pagar despesa', callback_data: 'pagar_despesa' }
+        ]
       ]
     }
   };
@@ -74,10 +73,9 @@ function notificarTodos(mensagem, excetoId) {
   });
 }
 
-const estadosUsuario = {}; // controle de estado por usuário
+const estadosUsuario = {};
 
-// Lógica de mensagens
-bot.on('message', (msg) => {
+bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
 
   if (!dados.usuarios.includes(chatId)) {
@@ -121,13 +119,12 @@ bot.on('message', (msg) => {
   salvarDados();
 
   const tipoStr = estado.tipo === 'despesa' ? 'Despesas' : (estado.tipo === 'saldo' ? 'Saldo' : 'Gastos');
-  const resposta = `${tipoStr} registradas:\n${resultados.join('\n')}\n\n${formatarResumo()}`;
+  const resposta = `${tipoStr} registradas:\n` + resultados.join('\n') + '\n\n' + formatarResumo();
   bot.sendMessage(chatId, resposta, botaoVoltarMenu());
   notificarTodos(resposta, chatId);
 });
 
-// Lógica dos botões
-bot.on('callback_query', (query) => {
+bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const tipo = query.data;
 
@@ -177,9 +174,22 @@ bot.on('callback_query', (query) => {
       despesa.pago = true;
       dados.saldo -= despesa.valor;
       salvarDados();
-      const resposta = `Despesa "${despesa.nome}" marcada como paga.\n\n${formatarResumo()}`;
+      const resposta = `Despesa "${despesa.nome}" marcada como paga.\n\n` + formatarResumo();
       bot.sendMessage(chatId, resposta, botaoVoltarMenu());
       notificarTodos(resposta, chatId);
     }
   }
 });
+
+// Página inicial para manter o bot ativo via UptimeRobot
+app.get('/', (req, res) => res.send('Bot está rodando!'));
+
+// Webhook do Telegram
+bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
+
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+app.listen(PORT, () => console.log('Servidor rodando...'));
