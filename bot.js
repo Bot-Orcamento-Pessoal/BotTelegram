@@ -212,3 +212,79 @@ app.post(`/bot${token}`, (req, res) => {
 });
 
 app.listen(PORT, () => console.log('Servidor rodando...'));
+
+// ... (todo seu código original permanece igual até o final)
+
+bot.onText(/\/excluir saldo (\d+)/, (msg, match) => {
+  const index = parseInt(match[1]) - 1;
+  let contador = -1;
+  const removido = [];
+  const linhas = msg.text.split('\n');
+  linhas.forEach(linha => {
+    if (linha.includes('Incluir saldo')) contador++;
+    if (contador === index) {
+      const valorMatch = linha.match(/R\$ ([\d.,]+)/);
+      if (valorMatch) {
+        const valor = parseFloat(valorMatch[1].replace(',', '.'));
+        dados.saldo -= valor;
+        removido.push(`Saldo de R$ ${valor.toFixed(2)} removido.`);
+      }
+    }
+  });
+  if (removido.length > 0) {
+    salvarDados();
+    bot.sendMessage(msg.chat.id, removido.join('\n'));
+  } else {
+    bot.sendMessage(msg.chat.id, 'Índice inválido.');
+  }
+});
+
+bot.onText(/\/resumo (\w+)/, (msg, match) => {
+  const mesTexto = match[1].toLowerCase();
+  const meses = {
+    janeiro: 0, fevereiro: 1, março: 2, abril: 3, maio: 4, junho: 5,
+    julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11
+  };
+  if (!(mesTexto in meses)) {
+    bot.sendMessage(msg.chat.id, 'Mês inválido. Ex: /resumo abril');
+    return;
+  }
+  const mesIndex = meses[mesTexto];
+  const gastosMes = dados.gastos.filter(g => {
+    const data = new Date(g.data || 0);
+    return data.getMonth() === mesIndex;
+  });
+  if (gastosMes.length === 0) {
+    bot.sendMessage(msg.chat.id, `Nenhum gasto registrado em ${mesTexto}.`);
+    return;
+  }
+  const resumo = gastosMes.map((g, i) => `${i + 1}. ${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo})`).join('\n');
+  const total = gastosMes.reduce((s, g) => s + g.valor, 0);
+  bot.sendMessage(msg.chat.id, `Resumo de ${mesTexto}:\n${resumo}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
+});
+
+bot.onText(/\/ajuda/, (msg) => {
+  const ajuda = `
+Comandos disponíveis:
+/excluir gasto N – Exclui o gasto número N.
+/excluir despesa N – Exclui a despesa número N.
+/excluir saldo N – Exclui o saldo número N.
+/resumo [mês] – Mostra os gastos do mês. Ex: /resumo abril
+/listar_gastos – Lista todos os gastos.
+/listar_despesas – Lista todas as despesas.
+/start – Exibe o menu principal.
+  `.trim();
+  bot.sendMessage(msg.chat.id, ajuda, botaoVoltarMenu());
+});
+
+// Adiciona data aos gastos registrados
+function registrarGastoComData(gasto) {
+  return { ...gasto, data: new Date().toISOString() };
+}
+
+// Atualiza os pontos onde gastos são registrados
+const originalPushGasto = dados.gastos.push.bind(dados.gastos);
+dados.gastos.push = function (...items) {
+  const atualizados = items.map(registrarGastoComData);
+  return originalPushGasto(...atualizados);
+};
