@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 const fs = require('fs');
 
 const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; // Substitua pelo seu token real
-const bot = new TelegramBot(token); // webhook, sem polling
+const bot = new TelegramBot(token, { webHook: true }); // webhook, sem polling
 
 const app = express();
 app.use(bodyParser.json());
@@ -75,6 +75,30 @@ function notificarTodos(mensagem, excetoId) {
 
 const estadosUsuario = {};
 
+bot.onText(/\/excluir gasto (\d+)/, (msg, match) => {
+  const index = parseInt(match[1]) - 1;
+  if (dados.gastos[index]) {
+    const removido = dados.gastos.splice(index, 1)[0];
+    if (removido.tipo === 'dinheiro') dados.saldo += removido.valor;
+    salvarDados();
+    bot.sendMessage(msg.chat.id, `Gasto "${removido.nome}" removido.`);
+  } else {
+    bot.sendMessage(msg.chat.id, 'Índice inválido.');
+  }
+});
+
+bot.onText(/\/excluir despesa (\d+)/, (msg, match) => {
+  const index = parseInt(match[1]) - 1;
+  if (dados.despesas[index]) {
+    const removido = dados.despesas.splice(index, 1)[0];
+    if (removido.pago) dados.saldo += removido.valor;
+    salvarDados();
+    bot.sendMessage(msg.chat.id, `Despesa "${removido.nome}" removida.`);
+  } else {
+    bot.sendMessage(msg.chat.id, 'Índice inválido.');
+  }
+});
+
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
 
@@ -102,7 +126,7 @@ bot.on('message', async (msg) => {
       if (!isNaN(valor)) {
         if (estado.tipo === 'despesa') {
           dados.despesas.push({ nome, valor, pago: false });
-          resultados.push(`${nome} - R$ ${valor.toFixed(2)} (pendente)`);
+          resultados.push(`${nome} - R$ ${valor.toFixed(2)} (❌ pendente)`);
         } else if (estado.tipo === 'saldo') {
           dados.saldo += valor;
           resultados.push(`${nome} - R$ ${valor.toFixed(2)}`);
@@ -136,20 +160,20 @@ bot.on('callback_query', async (query) => {
   if (tipo.startsWith('incluir_') || tipo.startsWith('gasto_')) {
     const tipoA = tipo.split('_')[1];
     estadosUsuario[chatId] = { tipo: tipoA === 'despesa' ? 'despesa' : tipoA };
-    const instrucao = tipoA === 'despesa'
-      ? 'Digite as despesas no formato "nome, valor", uma por linha:'
-      : 'Digite os valores no formato "nome, valor", uma por linha:';
+    const instrucao = tipoA === 'despesa' ? 'Digite as despesas no formato "nome, valor", uma por linha:' : 'Digite os valores no formato "nome, valor", uma por linha:';
     bot.sendMessage(chatId, instrucao);
   }
 
   if (tipo === 'listar_gastos') {
-    const lista = dados.gastos.map(g => `${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo})`).join('\n') || 'Nenhum gasto registrado.';
-    bot.sendMessage(chatId, `Gastos:\n${lista}`, botaoVoltarMenu());
+    const lista = dados.gastos.map((g, i) => `${i + 1}. ${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo})`).join('\n') || 'Nenhum gasto registrado.';
+    const total = dados.gastos.reduce((s, g) => s + g.valor, 0);
+    bot.sendMessage(chatId, `Gastos:\n${lista}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
   }
 
   if (tipo === 'listar_despesas') {
-    const lista = dados.despesas.map((d, i) => `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} [${d.pago ? 'Pago' : 'Pendente'}]`).join('\n') || 'Nenhuma despesa registrada.';
-    bot.sendMessage(chatId, `Despesas:\n${lista}`, botaoVoltarMenu());
+    const lista = dados.despesas.map((d, i) => `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} [${d.pago ? '✅ Pago' : '❌ Pendente'}]`).join('\n') || 'Nenhuma despesa registrada.';
+    const total = dados.despesas.reduce((s, d) => s + d.valor, 0);
+    bot.sendMessage(chatId, `Despesas:\n${lista}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
   }
 
   if (tipo === 'pagar_despesa') {
@@ -158,13 +182,8 @@ bot.on('callback_query', async (query) => {
       bot.sendMessage(chatId, 'Nenhuma despesa pendente.', botaoVoltarMenu());
       return;
     }
-    const botoes = pendentes.map(d => [{
-      text: `${d.nome} - R$ ${d.valor.toFixed(2)}`,
-      callback_data: `pagar_${d.index}`
-    }]);
-    bot.sendMessage(chatId, 'Selecione a despesa para marcar como paga:', {
-      reply_markup: { inline_keyboard: botoes }
-    });
+    const botoes = pendentes.map(d => [{ text: `${d.nome} - R$ ${d.valor.toFixed(2)}`, callback_data: `pagar_${d.index}` }]);
+    bot.sendMessage(chatId, 'Selecione a despesa para marcar como paga:', { reply_markup: { inline_keyboard: botoes } });
   }
 
   if (tipo.startsWith('pagar_')) {
