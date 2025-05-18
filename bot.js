@@ -210,6 +210,57 @@ app.post(`/bot${token}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
+const path = require('path');
+
+// Comando para exportar os dados
+bot.onText(/\/exportar/, (msg) => {
+  const chatId = msg.chat.id;
+  const caminhoBackup = path.resolve(__dirname, 'dados.json');
+
+  if (fs.existsSync(caminhoBackup)) {
+    bot.sendDocument(chatId, caminhoBackup, {}, { filename: 'backup_dados.json' });
+  } else {
+    bot.sendMessage(chatId, 'Nenhum backup encontrado.');
+  }
+});
+
+// Comando para importar dados de um arquivo .json
+bot.on('document', async (msg) => {
+  const chatId = msg.chat.id;
+  const fileId = msg.document.file_id;
+  const fileName = msg.document.file_name;
+
+  if (!fileName.endsWith('.json')) {
+    bot.sendMessage(chatId, 'Envie um arquivo JSON válido para importar.');
+    return;
+  }
+
+  try {
+    const fileLink = await bot.getFileLink(fileId);
+    const https = require('https');
+
+    https.get(fileLink, (res) => {
+      let data = '';
+      res.on('data', chunk => (data += chunk));
+      res.on('end', () => {
+        try {
+          const dadosImportados = JSON.parse(data);
+          if (dadosImportados.saldo !== undefined && Array.isArray(dadosImportados.gastos)) {
+            dados = dadosImportados;
+            salvarDados();
+            bot.sendMessage(chatId, 'Backup importado com sucesso!');
+          } else {
+            bot.sendMessage(chatId, 'Arquivo inválido. Certifique-se de que é um backup do bot.');
+          }
+        } catch (e) {
+          bot.sendMessage(chatId, 'Erro ao ler o arquivo. Verifique se ele está correto.');
+        }
+      });
+    });
+  } catch (err) {
+    bot.sendMessage(chatId, 'Erro ao importar backup.');
+  }
+});
 
 app.listen(PORT, () => console.log('Servidor rodando...'));
 
