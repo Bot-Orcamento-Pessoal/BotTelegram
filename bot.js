@@ -118,6 +118,8 @@ bot.on('message', async (msg) => {
   const linhas = msg.text.split('\n');
   const resultados = [];
 
+  const dataAtual = new Date().toISOString().split('T')[0]; // AAAA-MM-DD
+
   linhas.forEach(linha => {
     const partes = linha.split(',');
     if (partes.length === 2) {
@@ -125,13 +127,14 @@ bot.on('message', async (msg) => {
       const valor = parseFloat(partes[1].trim());
       if (!isNaN(valor)) {
         if (estado.tipo === 'despesa') {
-          dados.despesas.push({ nome, valor, pago: false });
+          dados.despesas.push({ nome, valor, pago: false, data: dataAtual });
           resultados.push(`${nome} - R$ ${valor.toFixed(2)} (❌ pendente)`);
         } else if (estado.tipo === 'saldo') {
           dados.saldo += valor;
+          dados.gastos.push({ nome, valor, tipo: 'saldo', data: dataAtual }); // opcional: registrar saldo com data
           resultados.push(`${nome} - R$ ${valor.toFixed(2)}`);
         } else {
-          dados.gastos.push({ nome, valor, tipo: estado.tipo });
+          dados.gastos.push({ nome, valor, tipo: estado.tipo, data: dataAtual });
           if (estado.tipo === 'dinheiro') dados.saldo -= valor;
           resultados.push(`${nome} - R$ ${valor.toFixed(2)}`);
         }
