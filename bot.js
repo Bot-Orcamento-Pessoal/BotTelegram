@@ -168,9 +168,16 @@ bot.on('callback_query', async (query) => {
   }
 
   if (tipo === 'listar_gastos') {
-    const lista = dados.gastos.map((g, i) => `${i + 1}. ${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo})`).join('\n') || 'Nenhum gasto registrado.';
-    const total = dados.gastos.reduce((s, g) => s + g.valor, 0);
-    bot.sendMessage(chatId, `Gastos:\n${lista}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
+    const lista = dados.gastos.map((g, i) => `${i + if (tipo === 'listar_gastos') {
+  const lista = dados.gastos
+    .map((g, i) => {
+      const data = g.data ? `📅 ${g.data}` : '';
+      return `${i + 1}. ${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo}) ${data}`;
+    })
+    .join('\n') || 'Nenhum gasto registrado.';
+  const total = dados.gastos.reduce((s, g) => s + g.valor, 0);
+  bot.sendMessage(chatId, `Gastos:\n${lista}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
+}
   }
 
   if (tipo === 'listar_despesas') {
