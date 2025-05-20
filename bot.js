@@ -168,7 +168,6 @@ bot.on('callback_query', async (query) => {
   }
 
   if (tipo === 'listar_gastos') {
-    const lista = dados.gastos.map((g, i) => `${i + if (tipo === 'listar_gastos') {
   const lista = dados.gastos
     .map((g, i) => {
       const data = g.data ? `📅 ${g.data}` : '';
@@ -177,7 +176,6 @@ bot.on('callback_query', async (query) => {
     .join('\n') || 'Nenhum gasto registrado.';
   const total = dados.gastos.reduce((s, g) => s + g.valor, 0);
   bot.sendMessage(chatId, `Gastos:\n${lista}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
-}
   }
 
   if (tipo === 'listar_despesas') {
@@ -278,20 +276,19 @@ app.listen(PORT, () => console.log('Servidor rodando...'));
 
 bot.onText(/\/excluir saldo (\d+)/, (msg, match) => {
   const index = parseInt(match[1]) - 1;
-  let contador = -1;
-  const removido = [];
-  const linhas = msg.text.split('\n');
-  linhas.forEach(linha => {
-    if (linha.includes('Incluir saldo')) contador++;
-    if (contador === index) {
-      const valorMatch = linha.match(/R\$ ([\d.,]+)/);
-      if (valorMatch) {
-        const valor = parseFloat(valorMatch[1].replace(',', '.'));
-        dados.saldo -= valor;
-        removido.push(`Saldo de R$ ${valor.toFixed(2)} removido.`);
-      }
-    }
-  });
+
+  if (isNaN(index) || index < 0 || index >= dados.saldos.length) {
+    bot.sendMessage(msg.chat.id, 'Índice inválido. Use /excluir saldo <número>.');
+    return;
+  }
+
+  const removido = dados.saldos.splice(index, 1)[0];
+  dados.saldo -= removido.valor;
+
+  salvarDados();
+  bot.sendMessage(msg.chat.id, `Saldo de R$ ${removido.valor.toFixed(2)} removido com sucesso.`);
+});
+
   if (removido.length > 0) {
     salvarDados();
     bot.sendMessage(msg.chat.id, removido.join('\n'));
