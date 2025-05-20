@@ -3,7 +3,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 
-const token = '7978120569:AAFH8TqHqXelm0SFiK6iNHhkwIHS0eE64_c'; // Substitua pelo seu token real
+const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E'; // Substitua pelo seu token real
 const bot = new TelegramBot(token, { webHook: true }); // webhook, sem polling
 
 const app = express();
