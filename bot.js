@@ -157,3 +157,27 @@ bot.onText(/\/despesa (.+)/, (msg, match) => {
   despesasFixas.push({ descricao: descricao.trim(), valor, status: 'pendente' });
   bot.sendMessage(msg.chat.id, `Despesa "${descricao.trim()}" adicionada como pendente.`);
 });
+
+bot.onText(/\/exportar/, (msg) => {
+  const chatId = msg.chat.id;
+
+  let csv = 'GASTOS\nDescrição,Valor,Tipo,Data\n';
+  gastos.forEach(g => {
+    csv += `"${g.descricao}",${g.valor},"${g.tipo}","${moment(g.data).format('DD/MM/YYYY HH:mm')}"\n`;
+  });
+
+  csv += '\nDESPESAS FIXAS\nDescrição,Valor,Status\n';
+  despesasFixas.forEach(d => {
+    csv += `"${d.descricao}",${d.valor},"${d.status}"\n`;
+  });
+
+  csv += `\nSALDO ATUAL\n${saldo.toFixed(2)}\n`;
+
+  const filePath = path.join(__dirname, 'backup.csv');
+  fs.writeFileSync(filePath, csv, 'utf8');
+
+  bot.sendDocument(chatId, filePath, {}, {
+    filename: 'backup_orcamento.csv',
+    contentType: 'text/csv'
+  });
+});
