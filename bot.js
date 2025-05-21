@@ -4,7 +4,7 @@ moment.locale('pt-br');
 
 const fs = require('fs');
 const path = require('path');
-const token = '7978120569:AAH6h8ewxKbl3iAY19VgZ3MkwX9JbsVhdZ4';
+const token = process.env.BOT_TOKEN;
 const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
