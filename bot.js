@@ -100,12 +100,15 @@ bot.on('callback_query', query => {
     bot.once('message', msg => {
       const linhas = msg.text.split('\n');
       linhas.forEach(linha => {
-        const [descricao, valorStr] = linha.split(',');
-        const valor = parseFloat(valorStr);
-        if (descricao && !isNaN(valor)) {
-          gastos.push({ descricao: descricao.trim(), valor, tipo, data: moment().format() });
-          if (tipo === 'dinheiro') saldo -= valor;
-        }
+        const partes = linha.split(',');
+const descricao = partes[0]?.trim();
+const valor = parseFloat(partes[1]);
+const dataInformada = partes[2] ? moment(partes[2].trim(), 'DD/MM', true) : moment();
+
+if (descricao && !isNaN(valor) && dataInformada.isValid()) {
+  gastos.push({ descricao, valor, tipo, data: dataInformada.format() });
+  if (tipo === 'dinheiro') saldo -= valor;
+}
       });
       enviarResumo(chatId);
     });
