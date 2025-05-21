@@ -9,8 +9,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
 
-const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E';
-const bot = new TelegramBot(token);
+const bot = new TelegramBot(token, { webHook: true });
 bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
 
 app.use(bodyParser.json());
