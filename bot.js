@@ -1,348 +1,159 @@
 const TelegramBot = require('node-telegram-bot-api');
-const express = require('express');
-const bodyParser = require('body-parser');
-const fs = require('fs');
+const moment = require('moment');
+moment.locale('pt-br');
 
-const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E'; // Substitua pelo seu token real
-const bot = new TelegramBot(token, { webHook: true }); // webhook, sem polling
+const token = 'SEU_TOKEN_AQUI';
+const bot = new TelegramBot(token, { polling: true });
 
-const app = express();
-app.use(bodyParser.json());
+let saldo = 0;
+let gastos = [];
+let despesasFixas = [];
 
-const PORT = process.env.PORT || 3000;
-
-let dados = { saldo: 0, gastos: [], despesas: [], usuarios: [] };
-
-function salvarDados() {
-  fs.writeFileSync('dados.json', JSON.stringify(dados));
-}
-
-function carregarDados() {
-  if (fs.existsSync('dados.json')) {
-    dados = JSON.parse(fs.readFileSync('dados.json'));
+const menuPrincipal = {
+  reply_markup: {
+    inline_keyboard: [
+      [
+        { text: '➕ Incluir saldo', callback_data: 'incluir_saldo' },
+        { text: '💸 Gasto dinheiro/débito', callback_data: 'gasto_dinheiro' }
+      ],
+      [
+        { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' },
+        { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
+      ],
+      [
+        { text: '📋 Listar gastos', callback_data: 'listar_gastos' },
+        { text: '📑 Listar despesas', callback_data: 'listar_despesas' }
+      ],
+      [{ text: '💸 Pagar despesa', callback_data: 'pagar_despesa' }]
+    ]
   }
-}
+};
 
-carregarDados();
+function enviarResumo(chatId) {
+  const gastosMes = gastos.filter(g => moment(g.data).isSame(moment(), 'month'));
+  const totalDinheiro = gastosMes.filter(g => g.tipo === 'dinheiro').reduce((acc, g) => acc + g.valor, 0);
+  const totalCartao = gastosMes.filter(g => g.tipo === 'cartao').reduce((acc, g) => acc + g.valor, 0);
+  const totalSodexo = gastosMes.filter(g => g.tipo === 'sodexo').reduce((acc, g) => acc + g.valor, 0);
+  const totalDespesasPagas = despesasFixas.filter(d => d.status === 'pago').reduce((acc, d) => acc + d.valor, 0);
+  const saldoAtual = saldo - totalDinheiro - totalDespesasPagas;
 
-function formatarResumo() {
-  const dinheiro = dados.gastos.filter(g => g.tipo === 'dinheiro').reduce((s, g) => s + g.valor, 0);
-  const cartao = dados.gastos.filter(g => g.tipo === 'cartao').reduce((s, g) => s + g.valor, 0);
-  const sodexo = dados.gastos.filter(g => g.tipo === 'sodexo').reduce((s, g) => s + g.valor, 0);
-  return `Resumo atual:\nSaldo: R$ ${dados.saldo.toFixed(2)}\nGasto em dinheiro/débito: R$ ${dinheiro.toFixed(2)}\nGasto no cartão: R$ ${cartao.toFixed(2)}\nGasto no SODEXO: R$ ${sodexo.toFixed(2)}`;
-}
+  const resumo = `Resumo do mês de ${moment().format('MMMM')}:\n\n` +
+    `Saldo atual: R$ ${saldoAtual.toFixed(2)}\n` +
+    `Gastos Dinheiro/Débito: R$ ${totalDinheiro.toFixed(2)}\n` +
+    `Gastos Cartão: R$ ${totalCartao.toFixed(2)}\n` +
+    `Gastos SODEXO: R$ ${totalSodexo.toFixed(2)}\n` +
+    `Despesas pagas: R$ ${totalDespesasPagas.toFixed(2)}`;
 
-function menuPrincipal() {
-  return {
+  bot.sendMessage(chatId, resumo, {
     reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '➕ Incluir saldo', callback_data: 'incluir_saldo' },
-          { text: '➕ Incluir despesa', callback_data: 'incluir_despesa' }
-        ],
-        [
-          { text: '💵 Gasto dinheiro', callback_data: 'gasto_dinheiro' },
-          { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' },
-          { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
-        ],
-        [
-          { text: '📋 Listar gastos', callback_data: 'listar_gastos' },
-          { text: '📄 Listar despesas', callback_data: 'listar_despesas' }
-        ],
-        [
-          { text: '✅ Pagar despesa', callback_data: 'pagar_despesa' }
-        ]
-      ]
-    }
-  };
-}
-
-function botaoVoltarMenu() {
-  return {
-    reply_markup: {
-      inline_keyboard: [[{ text: '⬅️ Voltar ao menu', callback_data: 'voltar_menu' }]]
-    }
-  };
-}
-
-function notificarTodos(mensagem, excetoId) {
-  dados.usuarios.forEach(id => {
-    if (id !== excetoId) {
-      bot.sendMessage(id, mensagem, botaoVoltarMenu());
+      inline_keyboard: [[{ text: '⬅️ Voltar ao menu', callback_data: 'menu' }]]
     }
   });
 }
 
-const estadosUsuario = {};
-
-bot.onText(/\/excluir gasto (\d+)/, (msg, match) => {
-  const index = parseInt(match[1]) - 1;
-  if (dados.gastos[index]) {
-    const removido = dados.gastos.splice(index, 1)[0];
-    if (removido.tipo === 'dinheiro') dados.saldo += removido.valor;
-    salvarDados();
-    bot.sendMessage(msg.chat.id, `Gasto "${removido.nome}" removido.`);
-  } else {
-    bot.sendMessage(msg.chat.id, 'Índice inválido.');
-  }
+bot.onText(/\/start/, msg => {
+  bot.sendMessage(msg.chat.id, 'Bem-vindo ao bot de orçamento!', menuPrincipal);
 });
 
-bot.onText(/\/excluir despesa (\d+)/, (msg, match) => {
-  const index = parseInt(match[1]) - 1;
-  if (dados.despesas[index]) {
-    const removido = dados.despesas.splice(index, 1)[0];
-    if (removido.pago) dados.saldo += removido.valor;
-    salvarDados();
-    bot.sendMessage(msg.chat.id, `Despesa "${removido.nome}" removida.`);
-  } else {
-    bot.sendMessage(msg.chat.id, 'Índice inválido.');
-  }
-});
-
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-
-  if (!dados.usuarios.includes(chatId)) {
-    dados.usuarios.push(chatId);
-    salvarDados();
-  }
-
-  if (msg.text === '/start') {
-    bot.sendMessage(chatId, 'Bem-vindo ao bot de orçamento!', menuPrincipal());
-    return;
-  }
-
-  const estado = estadosUsuario[chatId];
-  if (!estado) return;
-
-  const linhas = msg.text.split('\n');
-  const resultados = [];
-
-  const dataAtual = new Date().toISOString().split('T')[0]; // AAAA-MM-DD
-
-  linhas.forEach(linha => {
-    const partes = linha.split(',');
-    if (partes.length === 2) {
-      const nome = partes[0].trim();
-      const valor = parseFloat(partes[1].trim());
-      if (!isNaN(valor)) {
-        if (estado.tipo === 'despesa') {
-          dados.despesas.push({ nome, valor, pago: false, data: dataAtual });
-          resultados.push(`${nome} - R$ ${valor.toFixed(2)} (❌ pendente)`);
-        } else if (estado.tipo === 'saldo') {
-          dados.saldo += valor;
-          dados.gastos.push({ nome, valor, tipo: 'saldo', data: dataAtual }); // opcional: registrar saldo com data
-          resultados.push(`${nome} - R$ ${valor.toFixed(2)}`);
-        } else {
-          dados.gastos.push({ nome, valor, tipo: estado.tipo, data: dataAtual });
-          if (estado.tipo === 'dinheiro') dados.saldo -= valor;
-          resultados.push(`${nome} - R$ ${valor.toFixed(2)}`);
-        }
-      }
-    }
-  });
-
-  delete estadosUsuario[chatId];
-  salvarDados();
-
-  const tipoStr = estado.tipo === 'despesa' ? 'Despesas' : (estado.tipo === 'saldo' ? 'Saldo' : 'Gastos');
-  const resposta = `${tipoStr} registradas:\n` + resultados.join('\n') + '\n\n' + formatarResumo();
-  bot.sendMessage(chatId, resposta, botaoVoltarMenu());
-  notificarTodos(resposta, chatId);
-});
-
-bot.on('callback_query', async (query) => {
+bot.on('callback_query', query => {
   const chatId = query.message.chat.id;
-  const tipo = query.data;
+  const data = query.data;
 
-  if (tipo === 'voltar_menu') {
-    bot.sendMessage(chatId, 'Menu principal:', menuPrincipal());
-    return;
+  if (data === 'incluir_saldo') {
+    bot.sendMessage(chatId, 'Envie o saldo no formato: valor ou descrição, valor');
+    bot.once('message', msg => {
+      const partes = msg.text.split(',');
+      const valor = parseFloat(partes.length === 1 ? partes[0] : partes[1]);
+      if (!isNaN(valor)) {
+        saldo += valor;
+        enviarResumo(chatId);
+      } else {
+        bot.sendMessage(chatId, 'Valor inválido.');
+      }
+    });
   }
 
-  if (tipo.startsWith('incluir_') || tipo.startsWith('gasto_')) {
-    const tipoA = tipo.split('_')[1];
-    estadosUsuario[chatId] = { tipo: tipoA === 'despesa' ? 'despesa' : tipoA };
-    const instrucao = tipoA === 'despesa' ? 'Digite as despesas no formato "nome, valor", uma por linha:' : 'Digite os valores no formato "nome, valor", uma por linha:';
-    bot.sendMessage(chatId, instrucao);
-  }
-
-  if (tipo === 'listar_gastos') {
-  const lista = dados.gastos
-    .map((g, i) => {
-      const data = g.data ? `📅 ${g.data}` : '';
-      return `${i + 1}. ${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo}) ${data}`;
-    })
-    .join('\n') || 'Nenhum gasto registrado.';
-  const total = dados.gastos.reduce((s, g) => s + g.valor, 0);
-  bot.sendMessage(chatId, `Gastos:\n${lista}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
-  }
-
-  if (tipo === 'listar_despesas') {
-    const lista = dados.despesas.map((d, i) => `${i + 1}. ${d.nome} - R$ ${d.valor.toFixed(2)} [${d.pago ? '✅ Pago' : '❌ Pendente'}]`).join('\n') || 'Nenhuma despesa registrada.';
-    const total = dados.despesas.reduce((s, d) => s + d.valor, 0);
-    bot.sendMessage(chatId, `Despesas:\n${lista}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
-  }
-
-  if (tipo === 'pagar_despesa') {
-    const pendentes = dados.despesas.map((d, i) => ({ ...d, index: i })).filter(d => !d.pago);
-    if (pendentes.length === 0) {
-      bot.sendMessage(chatId, 'Nenhuma despesa pendente.', botaoVoltarMenu());
-      return;
-    }
-    const botoes = pendentes.map(d => [{ text: `${d.nome} - R$ ${d.valor.toFixed(2)}`, callback_data: `pagar_${d.index}` }]);
-    bot.sendMessage(chatId, 'Selecione a despesa para marcar como paga:', { reply_markup: { inline_keyboard: botoes } });
-  }
-
-  if (tipo.startsWith('pagar_')) {
-    const index = parseInt(tipo.split('_')[1]);
-    const despesa = dados.despesas[index];
-    if (despesa && !despesa.pago) {
-      despesa.pago = true;
-      dados.saldo -= despesa.valor;
-      salvarDados();
-      const resposta = `Despesa "${despesa.nome}" marcada como paga.\n\n` + formatarResumo();
-      bot.sendMessage(chatId, resposta, botaoVoltarMenu());
-      notificarTodos(resposta, chatId);
-    }
-  }
-});
-
-// Página inicial para manter o bot ativo via UptimeRobot
-app.get('/', (req, res) => res.send('Bot está rodando!'));
-
-// Webhook do Telegram
-bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
-
-app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-const path = require('path');
-
-// Comando para exportar os dados
-bot.onText(/\/exportar/, (msg) => {
-  const chatId = msg.chat.id;
-  const caminhoBackup = path.resolve(__dirname, 'dados.json');
-
-  if (fs.existsSync(caminhoBackup)) {
-    bot.sendDocument(chatId, caminhoBackup, {}, { filename: 'backup_dados.json' });
-  } else {
-    bot.sendMessage(chatId, 'Nenhum backup encontrado.');
-  }
-});
-
-// Comando para importar dados de um arquivo .json
-bot.on('document', async (msg) => {
-  const chatId = msg.chat.id;
-  const fileId = msg.document.file_id;
-  const fileName = msg.document.file_name;
-
-  if (!fileName.endsWith('.json')) {
-    bot.sendMessage(chatId, 'Envie um arquivo JSON válido para importar.');
-    return;
-  }
-
-  try {
-    const fileLink = await bot.getFileLink(fileId);
-    const https = require('https');
-
-    https.get(fileLink, (res) => {
-      let data = '';
-      res.on('data', chunk => (data += chunk));
-      res.on('end', () => {
-        try {
-          const dadosImportados = JSON.parse(data);
-          if (dadosImportados.saldo !== undefined && Array.isArray(dadosImportados.gastos)) {
-            dados = dadosImportados;
-            salvarDados();
-            bot.sendMessage(chatId, 'Backup importado com sucesso!');
-          } else {
-            bot.sendMessage(chatId, 'Arquivo inválido. Certifique-se de que é um backup do bot.');
-          }
-        } catch (e) {
-          bot.sendMessage(chatId, 'Erro ao ler o arquivo. Verifique se ele está correto.');
+  if (['gasto_dinheiro', 'gasto_cartao', 'gasto_sodexo'].includes(data)) {
+    const tipo = data.replace('gasto_', '');
+    bot.sendMessage(chatId, 'Envie os gastos no formato: descrição, valor. Pode enviar vários por linha.');
+    bot.once('message', msg => {
+      const linhas = msg.text.split('\n');
+      linhas.forEach(linha => {
+        const [descricao, valorStr] = linha.split(',');
+        const valor = parseFloat(valorStr);
+        if (descricao && !isNaN(valor)) {
+          gastos.push({ descricao: descricao.trim(), valor, tipo, data: moment().format() });
+          if (tipo === 'dinheiro') saldo -= valor;
         }
       });
+      enviarResumo(chatId);
     });
-  } catch (err) {
-    bot.sendMessage(chatId, 'Erro ao importar backup.');
+  }
+
+  if (data === 'listar_gastos') {
+    if (gastos.length === 0) {
+      bot.sendMessage(chatId, 'Nenhum gasto registrado.');
+      return;
+    }
+    const lista = gastos.map((g, i) =>
+      `${i + 1}. ${g.descricao} - R$ ${g.valor.toFixed(2)} - ${g.tipo} - ${moment(g.data).format('DD/MM')}`
+    ).join('\n');
+    bot.sendMessage(chatId, `Gastos:\n${lista}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '⬅️ Voltar ao menu', callback_data: 'menu' }]]
+      }
+    });
+  }
+
+  if (data === 'listar_despesas') {
+    if (despesasFixas.length === 0) {
+      bot.sendMessage(chatId, 'Nenhuma despesa fixa registrada.');
+      return;
+    }
+    const lista = despesasFixas.map((d, i) =>
+      `${i + 1}. ${d.descricao} - R$ ${d.valor.toFixed(2)} - ${d.status}`
+    ).join('\n');
+    bot.sendMessage(chatId, `Despesas Fixas:\n${lista}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '⬅️ Voltar ao menu', callback_data: 'menu' }]]
+      }
+    });
+  }
+
+  if (data === 'pagar_despesa') {
+    const pendentes = despesasFixas.filter(d => d.status === 'pendente');
+    if (pendentes.length === 0) {
+      bot.sendMessage(chatId, 'Nenhuma despesa pendente.');
+      return;
+    }
+    const botoes = pendentes.map((d, i) => [{ text: `${d.descricao} - R$ ${d.valor.toFixed(2)}`, callback_data: `pagar_${i}` }]);
+    bot.sendMessage(chatId, 'Escolha a despesa para pagar:', {
+      reply_markup: { inline_keyboard: botoes }
+    });
+  }
+
+  if (data.startsWith('pagar_')) {
+    const index = parseInt(data.replace('pagar_', ''));
+    if (!isNaN(index) && despesasFixas[index] && despesasFixas[index].status === 'pendente') {
+      despesasFixas[index].status = 'pago';
+      saldo -= despesasFixas[index].valor;
+      bot.sendMessage(chatId, `Despesa "${despesasFixas[index].descricao}" marcada como paga.`);
+      enviarResumo(chatId);
+    }
+  }
+
+  if (data === 'menu') {
+    bot.sendMessage(chatId, 'Menu principal:', menuPrincipal);
   }
 });
 
-app.listen(PORT, () => console.log('Servidor rodando...'));
-
-// ... (todo seu código original permanece igual até o final)
-
-bot.onText(/\/excluir saldo (\d+)/, (msg, match) => {
-  const index = parseInt(match[1]) - 1;
-
-  if (isNaN(index) || index < 0 || index >= dados.saldos.length) {
-    bot.sendMessage(msg.chat.id, 'Índice inválido. Use /excluir saldo <número>.');
+bot.onText(/\/despesa (.+)/, (msg, match) => {
+  const [descricao, valorStr] = match[1].split(',');
+  const valor = parseFloat(valorStr);
+  if (!descricao || isNaN(valor)) {
+    bot.sendMessage(msg.chat.id, 'Formato inválido. Use: /despesa aluguel, 500');
     return;
   }
-
-  const removido = dados.saldos.splice(index, 1)[0];
-  dados.saldo -= removido.valor;
-
-  salvarDados();
-  bot.sendMessage(msg.chat.id, `Saldo de R$ ${removido.valor.toFixed(2)} removido com sucesso.`);
+  despesasFixas.push({ descricao: descricao.trim(), valor, status: 'pendente' });
+  bot.sendMessage(msg.chat.id, `Despesa "${descricao.trim()}" adicionada como pendente.`);
 });
-
-  if (removido.length > 0) {
-    salvarDados();
-    bot.sendMessage(msg.chat.id, removido.join('\n'));
-  } else {
-    bot.sendMessage(msg.chat.id, 'Índice inválido.');
-  }
-});
-
-bot.onText(/\/resumo (\w+)/, (msg, match) => {
-  const mesTexto = match[1].toLowerCase();
-  const meses = {
-    janeiro: 0, fevereiro: 1, março: 2, abril: 3, maio: 4, junho: 5,
-    julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11
-  };
-  if (!(mesTexto in meses)) {
-    bot.sendMessage(msg.chat.id, 'Mês inválido. Ex: /resumo abril');
-    return;
-  }
-  const mesIndex = meses[mesTexto];
-  const gastosMes = dados.gastos.filter(g => {
-    const data = new Date(g.data || 0);
-    return data.getMonth() === mesIndex;
-  });
-  if (gastosMes.length === 0) {
-    bot.sendMessage(msg.chat.id, `Nenhum gasto registrado em ${mesTexto}.`);
-    return;
-  }
-  const resumo = gastosMes.map((g, i) => `${i + 1}. ${g.nome} - R$ ${g.valor.toFixed(2)} (${g.tipo})`).join('\n');
-  const total = gastosMes.reduce((s, g) => s + g.valor, 0);
-  bot.sendMessage(msg.chat.id, `Resumo de ${mesTexto}:\n${resumo}\n\nTOTAL: R$ ${total.toFixed(2)}`, botaoVoltarMenu());
-});
-
-bot.onText(/\/ajuda/, (msg) => {
-  const ajuda = `
-Comandos disponíveis:
-/excluir gasto N – Exclui o gasto número N.
-/excluir despesa N – Exclui a despesa número N.
-/excluir saldo N – Exclui o saldo número N.
-/resumo [mês] – Mostra os gastos do mês. Ex: /resumo abril
-/listar_gastos – Lista todos os gastos.
-/listar_despesas – Lista todas as despesas.
-/start – Exibe o menu principal.
-  `.trim();
-  bot.sendMessage(msg.chat.id, ajuda, botaoVoltarMenu());
-});
-
-// Adiciona data aos gastos registrados
-function registrarGastoComData(gasto) {
-  return { ...gasto, data: new Date().toISOString() };
-}
-
-// Atualiza os pontos onde gastos são registrados
-const originalPushGasto = dados.gastos.push.bind(dados.gastos);
-dados.gastos.push = function (...items) {
-  const atualizados = items.map(registrarGastoComData);
-  return originalPushGasto(...atualizados);
-};
