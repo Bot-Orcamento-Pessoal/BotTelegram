@@ -3,7 +3,28 @@ const moment = require('moment');
 moment.locale('pt-br');
 
 const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E';
-const bot = new TelegramBot(token, { polling: true });
+const express = require('express');
+const bodyParser = require('body-parser');
+const TelegramBot = require('node-telegram-bot-api');
+const app = express();
+
+const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E';
+const bot = new TelegramBot(token);
+bot.setWebHook(`https://https://bottelegram-q3d6.onrender.com/bot${token}`);
+
+app.use(bodyParser.json());
+
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// Coloque o restante do seu código aqui (gastos, handlers etc.)
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Bot rodando na porta ${PORT}`);
+});
 
 let saldo = 0;
 let gastos = [];
