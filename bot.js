@@ -2,15 +2,16 @@ const TelegramBot = require('node-telegram-bot-api');
 const moment = require('moment');
 moment.locale('pt-br');
 
+const fs = require('fs');
+const path = require('path');
 const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E';
 const express = require('express');
 const bodyParser = require('body-parser');
-const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 
 const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E';
 const bot = new TelegramBot(token);
-bot.setWebHook(`https://https://bottelegram-q3d6.onrender.com/bot${token}`);
+bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
 
 app.use(bodyParser.json());
 
