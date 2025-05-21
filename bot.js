@@ -96,7 +96,7 @@ bot.on('callback_query', query => {
 
   if (['gasto_dinheiro', 'gasto_cartao', 'gasto_sodexo'].includes(data)) {
     const tipo = data.replace('gasto_', '');
-    bot.sendMessage(chatId, 'Envie os gastos no formato: descrição, valor. Pode enviar vários por linha.');
+    bot.sendMessage(chatId, 'Envie os gastos no formato: descrição, valor, data (opcional). Pode enviar vários por linha.\nEx: mercado, 50, 10/05');
     bot.once('message', msg => {
       const linhas = msg.text.split('\n');
       linhas.forEach(linha => {
