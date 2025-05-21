@@ -2,7 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const moment = require('moment');
 moment.locale('pt-br');
 
-const token = 'SEU_TOKEN_AQUI';
+const token = '7978120569:AAFDKqGDFhCa8JUUR4Y-JL_zmYbFPBvj_0E';
 const bot = new TelegramBot(token, { polling: true });
 
 let saldo = 0;
