@@ -202,8 +202,3 @@ bot.onText(/\/exportar/, (msg) => {
     contentType: 'text/csv'
   });
 });
-bot.setMyCommands([]).then(() => {
-  console.log('Comandos removidos com sucesso.');
-}).catch((err) => {
-  console.error('Erro ao remover comandos:', err);
-});
