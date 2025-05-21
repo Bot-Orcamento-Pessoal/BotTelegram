@@ -9,9 +9,6 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
 
-const bot = new TelegramBot(token, { webHook: true });
-bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
-
 app.use(bodyParser.json());
 
 app.post(`/bot${token}`, (req, res) => {
@@ -25,6 +22,9 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Bot rodando na porta ${PORT}`);
 });
+
+const bot = new TelegramBot(token, { webHook: true });
+bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
 
 let saldo = 0;
 let gastos = [];
