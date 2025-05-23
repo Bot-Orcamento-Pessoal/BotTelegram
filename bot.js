@@ -35,17 +35,20 @@ const menuPrincipal = {
     inline_keyboard: [
       [
         { text: '➕ Incluir saldo', callback_data: 'incluir_saldo' },
-        { text: '💸 Gasto dinheiro/débito', callback_data: 'gasto_dinheiro' }
+        { text: '➕ Incluir despesa', callback_data: 'incluir_despesa' }
       ],
       [
-        { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' },
-        { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }
+        { text: '💸 Gasto dinheiro/débito', callback_data: 'gasto_dinheiro' },
+        { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' }
       ],
       [
-        { text: '📋 Listar gastos', callback_data: 'listar_gastos' },
-        { text: '📑 Listar despesas', callback_data: 'listar_despesas' }
+        { text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' },
+        { text: '📋 Listar gastos', callback_data: 'listar_gastos' }
       ],
-      [{ text: '💸 Pagar despesa', callback_data: 'pagar_despesa' }]
+      [
+        { text: '📑 Listar despesas', callback_data: 'listar_despesas' },
+        { text: '💸 Pagar despesa', callback_data: 'pagar_despesa' }
+      ]
     ]
   }
 };
@@ -80,6 +83,22 @@ bot.on('callback_query', query => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
+  if (data === 'incluir_despesa') {
+  bot.sendMessage(chatId, 'Envie a despesa no formato: descrição, valor');
+  bot.once('message', msg => {
+    const partes = msg.text.split(',');
+    const descricao = partes[0]?.trim();
+    const valor = parseFloat(partes[1]);
+    if (descricao && !isNaN(valor)) {
+      despesasFixas.push({ descricao, valor, status: 'pendente' });
+      bot.sendMessage(chatId, `Despesa "${descricao}" adicionada como pendente.`);
+      enviarResumo(chatId);
+    } else {
+      bot.sendMessage(chatId, 'Formato inválido. Use: descrição, valor');
+    }
+  });
+  }
+  
   if (data === 'incluir_saldo') {
     bot.sendMessage(chatId, 'Envie o saldo no formato: valor ou descrição, valor');
     bot.once('message', msg => {
@@ -268,4 +287,29 @@ bot.onText(/\/importar/, (msg) => {
       });
     });
   });
+});
+
+bot.onText(/\/ajuda/, msg => {
+  const comandos = `
+Comandos disponíveis:
+/start - Iniciar o bot
+/ajuda - Ver os comandos
+/despesa descrição, valor - Adicionar despesa fixa
+/exportar - Exportar backup em CSV
+/importar - Importar backup em CSV
+
+Use os botões para:
+- Incluir saldo
+- Incluir despesa
+- Adicionar gastos (dinheiro, cartão, SODEXO)
+- Listar gastos
+- Listar despesas
+- Pagar despesas fixas
+
+Os valores devem ser enviados no formato:
+descrição, valor
+Ou para gastos também pode incluir a data:
+descrição, valor, data (opcional, no formato DD/MM)
+`;
+  bot.sendMessage(msg.chat.id, comandos);
 });
