@@ -205,3 +205,67 @@ bot.onText(/\/exportar/, (msg) => {
     contentType: 'text/csv'
   });
 });
+
+bot.onText(/\/importar/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, 'Envie o arquivo CSV do backup.');
+
+  bot.once('document', async (docMsg) => {
+    const fileId = docMsg.document.file_id;
+    const fileLink = await bot.getFileLink(fileId);
+
+    const https = require('https');
+    https.get(fileLink, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const linhas = data.split('\n').map(l => l.trim()).filter(l => l);
+          let secao = '';
+          gastos = [];
+          despesasFixas = [];
+          saldo = 0;
+
+          linhas.forEach(linha => {
+            if (linha === 'GASTOS') {
+              secao = 'gastos';
+            } else if (linha === 'DESPESAS FIXAS') {
+              secao = 'despesas';
+            } else if (linha === 'SALDO ATUAL') {
+              secao = 'saldo';
+            } else if (!linha.startsWith('Descrição')) {
+              const partes = linha.split(',');
+              if (secao === 'gastos' && partes.length >= 4) {
+                const descricao = partes[0].replace(/"/g, '').trim();
+                const valor = parseFloat(partes[1]);
+                const tipo = partes[2].replace(/"/g, '').trim();
+                const data = moment(partes[3].replace(/"/g, '').trim(), 'DD/MM/YYYY HH:mm');
+                if (!isNaN(valor) && data.isValid()) {
+                  gastos.push({ descricao, valor, tipo, data: data.format() });
+                }
+              } else if (secao === 'despesas' && partes.length >= 3) {
+                const descricao = partes[0].replace(/"/g, '').trim();
+                const valor = parseFloat(partes[1]);
+                const status = partes[2].replace(/"/g, '').trim();
+                if (!isNaN(valor)) {
+                  despesasFixas.push({ descricao, valor, status });
+                }
+              } else if (secao === 'saldo' && partes.length >= 1) {
+                const valor = parseFloat(partes[0]);
+                if (!isNaN(valor)) {
+                  saldo = valor;
+                }
+              }
+            }
+          });
+
+          bot.sendMessage(chatId, 'Backup importado com sucesso!');
+          enviarResumo(chatId);
+        } catch (e) {
+          console.error(e);
+          bot.sendMessage(chatId, 'Erro ao importar o backup.');
+        }
+      });
+    });
+  });
+});
