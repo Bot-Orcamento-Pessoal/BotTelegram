@@ -6,6 +6,18 @@ const fs = require('fs');
 const path = require('path');
 const token = process.env.BOT_TOKEN;
 
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.send('Bot está rodando!');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
+
 const bot = new TelegramBot(token, { polling: true });
 
 let saldo = 0;
