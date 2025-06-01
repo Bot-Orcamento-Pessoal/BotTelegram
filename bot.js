@@ -5,26 +5,8 @@ moment.locale('pt-br');
 const fs = require('fs');
 const path = require('path');
 const token = process.env.BOT_TOKEN;
-const express = require('express');
-const bodyParser = require('body-parser');
-const app = express();
 
-app.use(bodyParser.json());
-
-app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
-// Coloque o restante do seu código aqui (gastos, handlers etc.)
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Bot rodando na porta ${PORT}`);
-});
-
-const bot = new TelegramBot(token, { webHook: true });
-bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
+const bot = new TelegramBot(token, { polling: true });
 
 let saldo = 0;
 let gastos = [];
