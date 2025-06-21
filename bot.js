@@ -49,7 +49,7 @@ const menuPrincipal = {
       ],
       [
         { text: '📑 Listar despesas', callback_data: 'listar_despesas' },
-        { text: '💸 Pagar despesa', callback_data: 'pagar_despesa' }
+        { text: '💸 Pagar despesa', callback_data: 'abrir_pagamento' }
       ]
     ]
   }
@@ -165,7 +165,7 @@ if (descricao && !isNaN(valor) && dataInformada.isValid()) {
     });
   }
 
-  if (data === 'pagar_despesa') {
+  if (data === 'abrir_pagamento') {
     const pendentes = despesasFixas.filter(d => d.status === 'pendente');
     if (pendentes.length === 0) {
       bot.sendMessage(chatId, 'Nenhuma despesa pendente.');
