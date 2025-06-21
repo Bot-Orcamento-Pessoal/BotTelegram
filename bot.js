@@ -18,7 +18,8 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token);
+bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
 
 let saldo = 0;
 let gastos = [];
