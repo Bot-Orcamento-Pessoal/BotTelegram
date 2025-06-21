@@ -178,14 +178,26 @@ if (descricao && !isNaN(valor) && dataInformada.isValid()) {
   }
 
   if (data.startsWith('pagar_')) {
-    const index = parseInt(data.replace('pagar_', ''));
-    if (!isNaN(index) && despesasFixas[index] && despesasFixas[index].status === 'pendente') {
-      despesasFixas[index].status = 'pago';
-      saldo -= despesasFixas[index].valor;
-      bot.sendMessage(chatId, `Despesa "${despesasFixas[index].descricao}" marcada como paga.`);
+  const index = parseInt(data.replace('pagar_', ''));
+  const pendentes = despesasFixas.filter(d => d.status === 'pendente');
+  const despesaSelecionada = pendentes[index];
+
+  if (!isNaN(index) && despesaSelecionada) {
+    // Encontrar o índice real no array original
+    const realIndex = despesasFixas.findIndex(d =>
+      d.descricao === despesaSelecionada.descricao &&
+      d.valor === despesaSelecionada.valor &&
+      d.status === 'pendente'
+    );
+
+    if (realIndex !== -1) {
+      despesasFixas[realIndex].status = 'pago';
+      saldo -= despesasFixas[realIndex].valor;
+      bot.sendMessage(chatId, `Despesa "${despesasFixas[realIndex].descricao}" marcada como paga.`);
       enviarResumo(chatId);
     }
   }
+}
 
   if (data === 'menu') {
     bot.sendMessage(chatId, 'Menu principal:', menuPrincipal);
