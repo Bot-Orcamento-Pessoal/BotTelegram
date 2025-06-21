@@ -13,27 +13,20 @@ app.get('/', (req, res) => {
   res.send('Bot está rodando!');
 });
 
-app.use(express.json());
-
-app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
 
+const bot = new TelegramBot(token);
+bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
+
 app.use(express.json());
 
 app.post(`/bot${token}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
-
-const bot = new TelegramBot(token);
-bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
 
 let saldo = 0;
 let gastos = [];
