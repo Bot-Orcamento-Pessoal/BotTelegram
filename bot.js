@@ -327,3 +327,31 @@ descrição, valor, data (opcional, no formato DD/MM)
 `;
   bot.sendMessage(msg.chat.id, comandos);
 });
+
+bot.onText(/\/resumo (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const termo = match[1].toLowerCase();
+
+  const gastosFiltrados = gastos.filter(g =>
+    g.descricao.toLowerCase().includes(termo) &&
+    moment(g.data).isSame(moment(), 'month')
+  );
+
+  if (gastosFiltrados.length === 0) {
+    bot.sendMessage(chatId, `Nenhum gasto encontrado com a palavra "${termo}" neste mês.`);
+    return;
+  }
+
+  const total = gastosFiltrados.reduce((acc, g) => acc + g.valor, 0);
+  const lista = gastosFiltrados.map((g, i) =>
+    `${i + 1}. ${g.descricao} - R$ ${g.valor.toFixed(2)} - ${g.tipo} - ${moment(g.data).format('DD/MM')}`
+  ).join('\n');
+
+  const mensagem = `Gastos com "${termo}" no mês de ${moment().format('MMMM')}:\n\n${lista}\n\nTotal: R$ ${total.toFixed(2)}`;
+
+  bot.sendMessage(chatId, mensagem, {
+    reply_markup: {
+      inline_keyboard: [[{ text: '⬅️ Voltar ao menu', callback_data: 'menu' }]]
+    }
+  });
+});
