@@ -4,13 +4,23 @@ moment.locale('pt-br');
 
 const fs = require('fs');
 const path = require('path');
-const token = process.env.BOT_TOKEN;
-
+const https = require('https');
 const express = require('express');
 const app = express();
 
+const token = process.env.BOT_TOKEN;
+const bot = new TelegramBot(token);
+bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
+
+app.use(express.json());
+
 app.get('/', (req, res) => {
   res.send('Bot está rodando!');
+});
+
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
 });
 
 const PORT = process.env.PORT || 3000;
