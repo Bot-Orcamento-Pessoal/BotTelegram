@@ -28,9 +28,6 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
 
-const bot = new TelegramBot(token);
-bot.setWebHook(`https://bottelegram-q3d6.onrender.com/bot${token}`);
-
 app.use(express.json());
 
 app.post(`/bot${token}`, (req, res) => {
