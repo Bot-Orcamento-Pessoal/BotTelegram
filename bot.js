@@ -289,6 +289,57 @@ bot.on('callback_query', (query) => {
   if(!data.startsWith('confirm_pay_')) bot.answerCallbackQuery(query.id);
 });
 
+// Comando /exportar – envia o arquivo data.json
+bot.onText(/\/exportar/, (msg) => {
+  const chatId = msg.chat.id;
+
+  if (fs.existsSync(DATA_FILE)) {
+    bot.sendDocument(chatId, DATA_FILE, {}, {
+      filename: 'dados_orcamento.json',
+      contentType: 'application/json'
+    });
+  } else {
+    bot.sendMessage(chatId, '❌ Nenhum dado encontrado para exportar.');
+  }
+});
+
+// Comando /importar – usuário envia um arquivo JSON e ele é carregado
+bot.on('document', async (msg) => {
+  const chatId = msg.chat.id;
+  const fileId = msg.document.file_id;
+  const fileName = msg.document.file_name;
+
+  if (!fileName.endsWith('.json')) {
+    bot.sendMessage(chatId, '❌ Envie apenas arquivos JSON para importar.');
+    return;
+  }
+
+  try {
+    const file = await bot.getFile(fileId);
+    const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+    
+    // Baixa o arquivo
+    const https = require('https');
+    const fileStream = fs.createWriteStream(DATA_FILE);
+
+    https.get(fileUrl, (response) => {
+      response.pipe(fileStream);
+      fileStream.on('finish', () => {
+        fileStream.close();
+        loadData(); // Recarrega os dados do arquivo novo
+        bot.sendMessage(chatId, '✅ Dados importados com sucesso!');
+      });
+    }).on('error', (err) => {
+      console.error('Erro ao baixar o arquivo:', err.message);
+      bot.sendMessage(chatId, '❌ Erro ao importar dados.');
+    });
+
+  } catch (error) {
+    console.error('Erro ao importar:', error.message);
+    bot.sendMessage(chatId, '❌ Erro ao importar dados.');
+  }
+});
+
 // Comandos de utilidade (/exportar, /importar, etc.)
 // Não foram alterados, mas se beneficiariam da nova estrutura de dados (state)
 // ... (O restante do seu código para /exportar, /importar, /ajuda, /resumo pode ser adaptado para usar o objeto `state`)
