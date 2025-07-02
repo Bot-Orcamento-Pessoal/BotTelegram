@@ -3,6 +3,7 @@ const moment = require('moment');
 moment.locale('pt-br');
 
 const https = require('https');
+const fs = require('fs');
 const express = require('express');
 const app = express();
 
@@ -275,13 +276,60 @@ bot.on('callback_query', (query) => {
     }
 });
 
-// Comandos de texto
+// Comando /resumo (mantido como está, se estiver implementado)
 bot.onText(/\/resumo\s*(.*)/, (msg, match) => {
-    // ...
+    // (Se estiver vazio, pode implementar depois)
 });
+
+// Comando /exportar
 bot.onText(/\/exportar/, (msg) => {
-    // ...
+    const chatId = msg.chat.id;
+    const backup = JSON.stringify(state, null, 2);
+    const filePath = `backup-${Date.now()}.json`;
+    const fs = require('fs');
+    fs.writeFileSync(filePath, backup);
+    bot.sendDocument(chatId, filePath, {}, {
+        filename: filePath,
+        contentType: 'application/json'
+    }).then(() => {
+        fs.unlinkSync(filePath); // Apaga o arquivo depois de enviar
+    }).catch((err) => {
+        bot.sendMessage(chatId, '❌ Erro ao exportar o backup.');
+        console.error(err);
+    });
 });
+
+// Comando /importar (pede para enviar o arquivo)
 bot.onText(/\/importar/, (msg) => {
-    // ...
+    bot.sendMessage(msg.chat.id, '📤 Envie agora o arquivo `.json` do backup para importar os dados.');
+});
+
+// Quando o usuário envia o arquivo .json
+bot.on('document', (msg) => {
+    const chatId = msg.chat.id;
+    const fileId = msg.document.file_id;
+
+    bot.getFileLink(fileId).then((fileUrl) => {
+        https.get(fileUrl, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const imported = JSON.parse(data);
+                    if (imported && typeof imported === 'object') {
+                        state = imported;
+                        bot.sendMessage(chatId, '✅ Backup importado com sucesso!');
+                    } else {
+                        bot.sendMessage(chatId, '❌ Arquivo inválido.');
+                    }
+                } catch (e) {
+                    bot.sendMessage(chatId, '❌ Erro ao importar: arquivo mal formatado.');
+                    console.error(e);
+                }
+            });
+        });
+    }).catch((err) => {
+        bot.sendMessage(chatId, '❌ Não foi possível obter o arquivo.');
+        console.error(err);
+    });
 });
