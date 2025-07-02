@@ -33,10 +33,12 @@ if (isProduction) {
 let state = {
   saldo: 0,
   gastos: [],
-  despesasFixas: []
+  despesasFixas: [],
+  entradas: [] // <-- NOVO: Array para histórico de entradas
 };
 let userState = {};
 
+// --- NOVO MENU PRINCIPAL ---
 const menuPrincipal = {
   reply_markup: {
     inline_keyboard: [
@@ -44,7 +46,7 @@ const menuPrincipal = {
       [{ text: '💸 Gasto dinheiro/débito', callback_data: 'gasto_dinheiro' }, { text: '💳 Gasto cartão', callback_data: 'gasto_cartao' }],
       [{ text: '🍽️ Gasto SODEXO', callback_data: 'gasto_sodexo' }, { text: '📋 Listar gastos', callback_data: 'list_gastos' }],
       [{ text: '📑 Listar despesas', callback_data: 'list_despesas' }, { text: '💸 Pagar despesa', callback_data: 'pay_despesa' }],
-      [{ text: '📊 Resumo do Mês', callback_data: 'show_summary' }]
+      [{ text: '📊 Resumo do Mês', callback_data: 'show_summary' }, { text: '💰 Listar Entradas', callback_data: 'list_entradas' }] // <-- NOVO BOTÃO
     ]
   }
 };
@@ -68,10 +70,10 @@ function getResumoText(gastosPeriodo, titulo) {
             .reduce((acc, d) => acc + d.valor, 0);
     }
     
-    const saldoAtual = state.saldo - totalDinheiro - totalDespesasPagas;
+    const saldoDisponivel = state.saldo - totalDinheiro - totalDespesasPagas;
 
     return `*${titulo}*\n\n` +
-        (titulo.toLowerCase().includes("resumo de") ? `💰 *Saldo disponível:* R$ ${saldoAtual.toFixed(2)}\n` : '') +
+        (titulo.toLowerCase().includes("resumo de") ? `💰 *Saldo disponível:* R$ ${saldoDisponivel.toFixed(2)}\n` : '') +
         `💸 *Gastos Dinheiro/Débito:* R$ ${totalDinheiro.toFixed(2)}\n` +
         `💳 *Fatura Cartão:* R$ ${totalCartao.toFixed(2)}\n` +
         `🍽️ *Gastos SODEXO:* R$ ${totalSodexo.toFixed(2)}\n` +
@@ -95,14 +97,19 @@ bot.on('message', (msg) => {
     let success = false;
     let successMessage = '';
 
+    // --- LÓGICA DE INCLUIR SALDO ATUALIZADA ---
     if (action === 'awaiting_saldo') {
-        const valor = parseFloat(text.replace(',', '.'));
-        if (!isNaN(valor)) {
+        const partes = text.split(',');
+        const descricao = partes[0]?.trim();
+        const valor = parseFloat(partes[1]);
+        
+        if (descricao && !isNaN(valor)) {
             state.saldo += valor;
-            successMessage = `✅ Saldo de R$ ${valor.toFixed(2)} adicionado!`;
+            state.entradas.push({ id: Date.now(), descricao, valor, data: moment().format() });
+            successMessage = `✅ Saldo de R$ ${valor.toFixed(2)} adicionado referente a "${descricao}"!`;
             success = true;
         } else {
-            bot.sendMessage(chatId, '❌ Valor inválido. Envie apenas o número.');
+            bot.sendMessage(chatId, '❌ Formato inválido. Use: `descrição, valor`\n*Exemplo:* `Salário, 3400`');
         }
     }
 
@@ -149,20 +156,16 @@ bot.on('message', (msg) => {
     delete userState[chatId];
 });
 
-// ####################################################################
-// ### CORREÇÃO PRINCIPAL ESTÁ AQUI DENTRO ###
-// ####################################################################
 bot.on('callback_query', (query) => {
-    // *** A SOLUÇÃO: Chame a confirmação no início para TODAS as queries ***
     bot.answerCallbackQuery(query.id).catch(() => {});
 
     const chatId = query.message.chat.id;
     const messageId = query.message.message_id;
     const data = query.data;
 
-    // Ações que aguardam input do usuário
     const inputActions = {
-        'action_add_saldo': { state: 'awaiting_saldo', text: 'Digite o valor do saldo a ser incluído:' },
+        // --- MENSAGEM ATUALIZADA ---
+        'action_add_saldo': { state: 'awaiting_saldo', text: 'Envie o saldo no formato: `descrição, valor`\n\n*Exemplo:* `Salário Júnior, 3400`' },
         'action_add_despesa': { state: 'awaiting_despesa', text: 'Envie a despesa no formato: `descrição, valor`' },
         'gasto_dinheiro': { state: 'awaiting_gasto', type: 'dinheiro', text: 'Envie o(s) gasto(s) em dinheiro/débito:\n`descrição, valor, data (opcional)`\n\n*Exemplo:* `Almoço, 25, 20/07`' },
         'gasto_cartao': { state: 'awaiting_gasto', type: 'cartao', text: 'Envie o(s) gasto(s) no cartão:\n`descrição, valor, data (opcional)`' },
@@ -173,10 +176,9 @@ bot.on('callback_query', (query) => {
         const { state: action, type, text } = inputActions[data];
         userState[chatId] = { action, type };
         bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' });
-        return; // Pode retornar aqui pois o answerCallbackQuery já foi chamado
+        return;
     }
     
-    // Ações de visualização e navegação
     if (data === 'main_menu') {
         bot.editMessageText('Menu principal:', { chat_id: chatId, message_id: messageId, ...menuPrincipal });
     }
@@ -192,8 +194,22 @@ bot.on('callback_query', (query) => {
             text = 'Nenhum gasto registrado.';
         } else {
             text += state.gastos
-                .sort((a, b) => moment(b.data).diff(moment(a.data))) // Ordena do mais novo para o mais antigo
+                .sort((a, b) => moment(b.data).diff(moment(a.data)))
                 .map(g => `*${moment(g.data).format('DD/MM')}* - ${g.descricao} - R$ ${g.valor.toFixed(2)} (${g.tipo})`)
+                .join('\n');
+        }
+        bot.editMessageText(text, { chat_id: chatId, message_id: messageId, ...backButton, parse_mode: 'Markdown' });
+    }
+
+    // --- NOVA FUNÇÃO PARA LISTAR ENTRADAS ---
+    if (data === 'list_entradas') {
+        let text = '*Histórico de Entradas de Saldo:*\n\n';
+        if (state.entradas.length === 0) {
+            text = 'Nenhuma entrada de saldo registrada.';
+        } else {
+            text += state.entradas
+                .sort((a, b) => moment(b.data).diff(moment(a.data)))
+                .map(e => `*${moment(e.data).format('DD/MM')}* - ${e.descricao} - R$ ${e.valor.toFixed(2)}`)
                 .join('\n');
         }
         bot.editMessageText(text, { chat_id: chatId, message_id: messageId, ...backButton, parse_mode: 'Markdown' });
@@ -214,7 +230,6 @@ bot.on('callback_query', (query) => {
     if (data === 'pay_despesa') {
         const pendentes = state.despesasFixas.filter(d => d.status === 'pendente');
         if (pendentes.length === 0) {
-            // Se não há pendentes, não edita a mensagem, só avisa
             return;
         }
         const botoes = pendentes.map(d => ([
@@ -231,13 +246,11 @@ bot.on('callback_query', (query) => {
         const despesa = state.despesasFixas.find(d => d.id === despesaId);
         if (despesa) {
             despesa.status = 'pago';
-            despesa.dataPagamento = moment().format(); // Adiciona data de pagamento
-            state.saldo -= despesa.valor;
+            despesa.dataPagamento = moment().format();
             const gastosDoMes = state.gastos.filter(g => moment(g.data).isSame(moment(), 'month'));
             bot.editMessageText(getResumoText(gastosDoMes, `Resumo de ${moment().format('MMMM')}`), { chat_id: chatId, message_id: messageId, ...backButton, parse_mode: 'Markdown' });
         }
     }
 });
-
 
 // ... (código para /resumo, /exportar, /importar permanece o mesmo)
