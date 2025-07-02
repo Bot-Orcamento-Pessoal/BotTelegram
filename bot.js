@@ -149,7 +149,7 @@ bot.on('message', (msg) => {
                 const dataInformada = dataStr ? moment(dataStr, 'DD/MM', true) : moment();
 
                 if (descricao && !isNaN(valor) && dataInformada.isValid()) {
-                    state.gastos.push({ id: Date.now(), descricao, valor, tipo, data: dataInformada.format() });
+                    state.gastos.push({ id: Date.now(), descricao, valor, tipo: type, data: dataInformada.format() });
                     successCount++;
                 } else {
                     throw new Error("Dados inválidos (descrição, valor ou data).");
